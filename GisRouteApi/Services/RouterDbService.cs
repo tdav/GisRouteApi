@@ -29,7 +29,7 @@ namespace GisRouteApi.Services
             }
             else
             {
-                using (var stream = new FileInfo(@"c:\Downloads\uzbekistan-latest.osm.pbf").OpenRead())
+                using (var stream = new FileInfo(AppDomain.CurrentDomain.BaseDirectory + @"OsmMap\uzbekistan-latest.osm.pbf").OpenRead())
                 {
                     routerDb.LoadOsmData(stream, Vehicle.Car);
                 }

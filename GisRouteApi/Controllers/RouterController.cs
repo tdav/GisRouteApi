@@ -1,3 +1,4 @@
+using GisRouteApi.Models;
 using GisRouteApi.Services;
 using Itinero;
 using Microsoft.AspNetCore.Mvc;
@@ -9,19 +10,18 @@ namespace GisRouteApi.Controllers
     [Route("[controller]")]
     public class RouterController : ControllerBase
     {
+        private readonly IRouterDbService service;
 
-        private readonly ILogger<RouterController> logger;
-
-        public RouterController(ILogger<RouterController> logger)
+        public RouterController(IRouterDbService service)
         {
-            this.logger = logger;
+            this.service = service;
         }
 
         [HttpPost]
-        public IResult Get([FromServices] IRouterDbService service, PointF begin, PointF end)
+        public IResult Get(Request m)
         {
             //var res = service.Calculate(new PointF(41.259976f, 69.199349f), new PointF(41.364306f, 69.264752f));
-            var res = service.Calculate(begin, end);
+            var res = service.Calculate(new PointF(m.Begin.Latitude, m.Begin.Longitude), new PointF(m.End.Latitude, m.End.Longitude));
             return Results.Content(res);
         }
     }
