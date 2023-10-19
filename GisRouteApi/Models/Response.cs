@@ -1,6 +1,4 @@
-﻿using Newtonsoft.Json;
-
-namespace GisRouteApi.Models
+﻿namespace GisRouteApi.Models
 {
     public class Response
     {
@@ -33,8 +31,7 @@ namespace GisRouteApi.Models
         public double time { get; set; }
         public string bridge { get; set; }
         public string oneway { get; set; }
-        public int? maxspeed { get; set; }
+        public string maxspeed { get; set; }
         public string tunnel { get; set; }
     }
-
 }

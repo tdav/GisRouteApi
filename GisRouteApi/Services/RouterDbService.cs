@@ -1,8 +1,11 @@
 ﻿using AsbtCore.UtilsV2;
 using GisRouteApi.Models;
 using Itinero;
+using Itinero.Algorithms.Networks;
+using Itinero.Algorithms.Search.Hilbert;
 using Itinero.Algorithms.Weights;
 using Itinero.IO.Osm;
+using Itinero.LocalGeo;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System;
@@ -36,6 +39,10 @@ namespace GisRouteApi.Services
                 using (var stream = new FileInfo(RouterDbPath).Open(FileMode.Open))
                 {
                     routerDb = RouterDb.Deserialize(stream);
+
+                    routerDb.Network.Sort();
+                    routerDb.OptimizeNetwork();
+                    routerDb.Network.Compress();
                 }
             }
             else
@@ -56,11 +63,14 @@ namespace GisRouteApi.Services
         {
             try
             {
+                //41.320991%2C69.321831~41.311151%2C69.313461
+                var profile = Itinero.Osm.Vehicles.Vehicle.Car.Fastest(); // the default OSM car profile.              
+
                 var router = new Router(routerDb);
-                var profile = Itinero.Osm.Vehicles.Vehicle.Car.Fastest(); // the default OSM car profile.                
 
                 var start = router.Resolve(profile, cbegin.X, cbegin.Y);// 41.259976f, 69.199349f);
                 var end = router.Resolve(profile, cend.X, cend.Y); // 41.364306f, 69.264752f);
+
 
                 var route = router.Calculate(profile, start, end);
                 var json = route.ToGeoJson();                
@@ -75,6 +85,8 @@ namespace GisRouteApi.Services
                 logger.LogError("RouterDbService.Calculate error: {0}", ex.GetAllMessages());
                 return new Answere<Response>(0, "Ошибка при калькуляции", ex.Message);
             }
+
+        
         }
     }
 }

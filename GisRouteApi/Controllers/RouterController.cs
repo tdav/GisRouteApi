@@ -17,6 +17,16 @@ namespace GisRouteApi.Controllers
             this.service = service;
         }
 
+        [HttpPost("Distance")]        
+        public IActionResult GetDistance(Request m)
+        {
+            var res = service.Calculate(new PointF(m.Begin.Latitude, m.Begin.Longitude), new PointF(m.End.Latitude, m.End.Longitude));
+            if (res.AnswereId == 1)
+                return Ok(res.Data.TotalDistance);
+
+            return BadRequest($"{res.AnswereMessage}\n{res.AnswereComment}");
+        }
+
         [HttpPost]
         public Answere<Response> Get(Request m)
         {

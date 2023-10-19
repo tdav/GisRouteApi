@@ -2,11 +2,11 @@
 {
     public class Request
     {
-        public Coordinate Begin { get; set; }
-        public Coordinate End { get; set; }
+        public Coordinata Begin { get; set; }
+        public Coordinata End { get; set; }
     }
 
-    public class Coordinate
+    public class Coordinata
     {
         public float Latitude { get; set; }
         public float Longitude { get; set; }

@@ -8,8 +8,7 @@
 
 	<ItemGroup>
 		<PackageReference Include="AsbtCore.UtilsV2" Version="2.0.83" />
-		<PackageReference Include="GMap.NET.Core" Version="2.1.7" />
-		<PackageReference Include="Itinero.IO.Osm" Version="1.5.1" />
+		<PackageReference Include="Itinero.IO.Osm" Version="1.6.0-pre037" />
 		<PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="7.0.12" />
 		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="7.0.5" />
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
