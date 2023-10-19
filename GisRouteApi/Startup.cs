@@ -6,7 +6,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json.Serialization;
 using Serilog;
 
-
 namespace GisRouteApi
 {
     public class Startup

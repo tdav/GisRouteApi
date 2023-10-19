@@ -6,6 +6,7 @@ namespace GisRouteApi.Models
     {
         public string type { get; set; }
         public Feature[] features { get; set; }
+        public float TotalDistance { get; set; }
     }
 
     public class Feature

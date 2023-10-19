@@ -1,15 +1,11 @@
 ﻿using AsbtCore.UtilsV2;
 using GisRouteApi.Models;
 using Itinero;
-using Itinero.Algorithms;
 using Itinero.Algorithms.Weights;
 using Itinero.IO.Osm;
-using Itinero.Osm.Vehicles;
-using Itinero.Profiles;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System;
-using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 
@@ -30,7 +26,7 @@ namespace GisRouteApi.Services
         public RouterDbService(IConfiguration conf, ILogger<RouterDbService> logger)
         {
             this.logger = logger;
-            string mapPath = conf["MapPath"];
+            string mapPath = AppDomain.CurrentDomain.BaseDirectory + conf["MapName"];
 
             routerDb = new RouterDb();
             RouterDbPath = $"{AppDomain.CurrentDomain.BaseDirectory}router_database.db";
@@ -67,11 +63,10 @@ namespace GisRouteApi.Services
                 var end = router.Resolve(profile, cend.X, cend.Y); // 41.364306f, 69.264752f);
 
                 var route = router.Calculate(profile, start, end);
-                var json = route.ToGeoJson();
-
-                var dis = route.TotalDistance;
+                var json = route.ToGeoJson();                
 
                 var res = json.FromJson<Response>();
+                res.TotalDistance = route.TotalDistance;
 
                 return new Answere<Response>(1, "", "", res);
             }
