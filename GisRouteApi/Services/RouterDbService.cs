@@ -1,22 +1,37 @@
-﻿using Itinero;
+﻿using AsbtCore.UtilsV2;
+using GisRouteApi.Models;
+using Itinero;
+using Itinero.Algorithms;
+using Itinero.Algorithms.Weights;
 using Itinero.IO.Osm;
 using Itinero.Osm.Vehicles;
+using Itinero.Profiles;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
+
 
 namespace GisRouteApi.Services
 {
     public interface IRouterDbService
     {
-        string Calculate(PointF cbegin, PointF cend);
+        Answere<Response> Calculate(PointF cbegin, PointF cend);
     }
 
     public class RouterDbService : IRouterDbService
     {
         private readonly string RouterDbPath;
         private readonly RouterDb routerDb;
+        private readonly ILogger<RouterDbService> logger;
 
-        public RouterDbService()
+        public RouterDbService(IConfiguration conf, ILogger<RouterDbService> logger)
         {
+            this.logger = logger;
+            string mapPath = conf["MapPath"];
+
             routerDb = new RouterDb();
             RouterDbPath = $"{AppDomain.CurrentDomain.BaseDirectory}router_database.db";
 
@@ -29,9 +44,9 @@ namespace GisRouteApi.Services
             }
             else
             {
-                using (var stream = new FileInfo(AppDomain.CurrentDomain.BaseDirectory + @"OsmMap\uzbekistan-latest.osm.pbf").OpenRead())
+                using (var stream = new FileInfo(mapPath).OpenRead())
                 {
-                    routerDb.LoadOsmData(stream, Vehicle.Car);
+                    routerDb.LoadOsmData(stream, Itinero.Osm.Vehicles.Vehicle.Car);
                 }
 
                 using (var stream = new FileInfo(RouterDbPath).Open(FileMode.Create))
@@ -41,16 +56,30 @@ namespace GisRouteApi.Services
             }
         }
 
-        public string Calculate(PointF cbegin, PointF cend)
+        public Answere<Response> Calculate(PointF cbegin, PointF cend)
         {
-            var router = new Router(routerDb);
-            var profile = Vehicle.Car.Fastest(); // the default OSM car profile.
+            try
+            {
+                var router = new Router(routerDb);
+                var profile = Itinero.Osm.Vehicles.Vehicle.Car.Fastest(); // the default OSM car profile.                
 
-            var start = router.Resolve(profile, cbegin.X, cbegin.Y);// 41.259976f, 69.199349f);
-            var end = router.Resolve(profile, cend.X, cend.Y); // 41.364306f, 69.264752f);
+                var start = router.Resolve(profile, cbegin.X, cbegin.Y);// 41.259976f, 69.199349f);
+                var end = router.Resolve(profile, cend.X, cend.Y); // 41.364306f, 69.264752f);
 
-            var route = router.Calculate(profile, start, end);
-            return route.ToGeoJson();
+                var route = router.Calculate(profile, start, end);
+                var json = route.ToGeoJson();
+
+                var dis = route.TotalDistance;
+
+                var res = json.FromJson<Response>();
+
+                return new Answere<Response>(1, "", "", res);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError("RouterDbService.Calculate error: {0}", ex.GetAllMessages());
+                return new Answere<Response>(0, "Ошибка при калькуляции", ex.Message);
+            }
         }
     }
 }

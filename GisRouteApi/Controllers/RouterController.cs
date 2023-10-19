@@ -18,11 +18,11 @@ namespace GisRouteApi.Controllers
         }
 
         [HttpPost]
-        public IResult Get(Request m)
+        public Answere<Response> Get(Request m)
         {
-            //var res = service.Calculate(new PointF(41.259976f, 69.199349f), new PointF(41.364306f, 69.264752f));
+            //var res = service.Calculate(new PointF(41.311577f, 69.289810f), new PointF(41.378203f, 69.251803f));
             var res = service.Calculate(new PointF(m.Begin.Latitude, m.Begin.Longitude), new PointF(m.End.Latitude, m.End.Longitude));
-            return Results.Content(res);
+            return res;
         }
     }
 }
