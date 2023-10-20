@@ -1,15 +1,15 @@
 ﻿namespace GisRouteApi.Models
 {
-    public class Request
+    public class Request<T>
     {
-        public Coordinata Begin { get; set; }
-        public Coordinata End { get; set; }
+        public Coordinata<T> Begin { get; set; }
+        public Coordinata<T> End { get; set; }
     }
 
-    public class Coordinata
+    public class Coordinata<T>
     {
-        public float Latitude { get; set; }
-        public float Longitude { get; set; }
+        public T Latitude { get; set; }
+        public T Longitude { get; set; }
     }
 
 }
