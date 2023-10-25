@@ -11,7 +11,6 @@
 		<PackageReference Include="Itinero.IO.Osm" Version="1.5.1" />
 		<PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="7.0.12" />
 		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="7.0.5" />
-		<PackageReference Include="OverPassAPI" Version="1.0.9" />
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
 		<PackageReference Include="Serilog.AspNetCore" Version="7.0.0" />
 		<PackageReference Include="Serilog.Enrichers.Environment" Version="2.2.0" />
