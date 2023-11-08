@@ -31,11 +31,12 @@ namespace GisRouteApi.Services
         private readonly string Url;
         private readonly string AddressUrl;
 
-        public RouterDbService(IConfiguration conf, ILogger<RouterDbService> logger)
+        public RouterDbService(IConfiguration conf, ILogger<RouterDbService> logger, IHttpClientFactory clientFactory)
         {
             this.logger = logger;
             string mapPath = AppDomain.CurrentDomain.BaseDirectory + conf["MapName"];
-            client = new HttpClient();
+
+            client = clientFactory.CreateClient("RouterDbService");
 
             routerDb = new RouterDb();
             RouterDbPath = $"{AppDomain.CurrentDomain.BaseDirectory}router_database.db";
@@ -105,6 +106,7 @@ namespace GisRouteApi.Services
                 string url = string.Format(Url, x1, x2, y1, y2);
                 var request = new HttpRequestMessage(HttpMethod.Get, url);
                 request.Headers.Add("Accept", "application/json");
+                request.Headers.Add("Accept-Language", "ru-RU");
 
                 var res = await client.SendAsync(request);
                 var js = await res.Content.ReadAsStringAsync();
@@ -136,7 +138,7 @@ namespace GisRouteApi.Services
                 var request = new HttpRequestMessage(HttpMethod.Get, url);
                 request.Headers.Add("Accept", "*/*");
                 request.Headers.Add("Accept-Encoding", "gzip, deflate, br");
-                request.Headers.Add("Accept-Language", "ru-Ru");
+                request.Headers.Add("Accept-Language", "ru-RU");
                 request.Headers.Add("User-Agent", "C# App");
 
                 var res = await client.SendAsync(request);

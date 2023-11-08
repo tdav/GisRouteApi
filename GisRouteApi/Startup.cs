@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json.Serialization;
 using Serilog;
+using System.Net.Http;
 
 namespace GisRouteApi
 {
@@ -30,6 +31,10 @@ namespace GisRouteApi
             });
             services.AddSingleton<IRouterDbService, RouterDbService>();
             services.AddSerilog();
+            services.AddHttpClient("RouterDbService").ConfigurePrimaryHttpMessageHandler(_ => new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => { return true; }
+            });
         }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
