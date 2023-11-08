@@ -111,9 +111,9 @@ namespace GisRouteApi.Services
 
                 var model = js.FromJson<OsrmResponseModel>();
 
-                var startAdr = await GetAddressAsync(x1, x2);
+                var startAdr = await GetAddressAsync(x2, x1);
                 await Task.Delay(1000);
-                var endAdr = await GetAddressAsync(y1, y2);
+                var endAdr = await GetAddressAsync(y2, y1);
 
                 model.StartAddress = startAdr.Data;
                 model.EndAddress = endAdr.Data;
@@ -136,6 +136,7 @@ namespace GisRouteApi.Services
                 var request = new HttpRequestMessage(HttpMethod.Get, url);
                 request.Headers.Add("Accept", "*/*");
                 request.Headers.Add("Accept-Encoding", "gzip, deflate, br");
+                request.Headers.Add("Accept-Language", "ru-Ru");
                 request.Headers.Add("User-Agent", "C# App");
 
                 var res = await client.SendAsync(request);
