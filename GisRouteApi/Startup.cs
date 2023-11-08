@@ -24,7 +24,10 @@ namespace GisRouteApi
                  });
 
             services.AddEndpointsApiExplorer();
-            services.AddSwaggerGen();
+            services.AddSwaggerGen(c =>
+            {
+                c.EnableAnnotations();
+            });
             services.AddSingleton<IRouterDbService, RouterDbService>();
             services.AddSerilog();
         }

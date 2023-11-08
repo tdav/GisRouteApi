@@ -3,6 +3,7 @@ using GisRouteApi.Services;
 using Itinero;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
+using Swashbuckle.AspNetCore.Annotations;
 using System.Drawing;
 using System.Threading.Tasks;
 
@@ -54,6 +55,19 @@ namespace GisRouteApi.Controllers
             }
 
             return BadRequest($"{res.AnswereMessage}\n{res.AnswereComment}");
+        }
+
+        [HttpGet("address/{coordinates}")]
+        [SwaggerOperation(Summary = "Получение адреса", Description = "Координаты нужно отправлять в следующем виде \"lat,lon\" -> \"41.320991,69.321831\".")]
+        public async ValueTask<IActionResult> GetAddressAsync(string coordinates)
+        {
+            string lat = coordinates.Split(',')[0];
+            string lon = coordinates.Split(',')[1];
+            var res = await service.GetAddressAsync(lat, lon);
+            if (res.AnswereId != 1)
+                return BadRequest($"{res.AnswereMessage}\n{res.AnswereComment}");
+
+            return Ok(res.Data);
         }
     }
 }

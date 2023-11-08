@@ -5,6 +5,8 @@
         public string code { get; set; }
         public Route[] routes { get; set; }
         public Waypoint[] waypoints { get; set; }
+        public AddressModel StartAddress { get; set; }
+        public AddressModel EndAddress { get; set; }
     }
 
     public class Route
