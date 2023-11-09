@@ -3,9 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.5.33627.172
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GisRouteApi", "GisRouteApi\GisRouteApi.csproj", "{EB124088-0B02-4F2A-81A9-5C548124EE07}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GisRouteApi", "GisRouteApi\GisRouteApi.csproj", "{EB124088-0B02-4F2A-81A9-5C548124EE07}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoutingExample", "RoutingExample\RoutingExample.csproj", "{1E6AC625-F7D2-48A6-ABFB-6F1F030B63C8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeocodingApi", "GeocodingApi\GeocodingApi.csproj", "{05222E4A-272C-47A7-BE3C-1CBB06C6E612}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{1E6AC625-F7D2-48A6-ABFB-6F1F030B63C8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1E6AC625-F7D2-48A6-ABFB-6F1F030B63C8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1E6AC625-F7D2-48A6-ABFB-6F1F030B63C8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{05222E4A-272C-47A7-BE3C-1CBB06C6E612}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{05222E4A-272C-47A7-BE3C-1CBB06C6E612}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{05222E4A-272C-47A7-BE3C-1CBB06C6E612}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{05222E4A-272C-47A7-BE3C-1CBB06C6E612}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

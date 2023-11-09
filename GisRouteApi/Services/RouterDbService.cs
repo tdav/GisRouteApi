@@ -1,10 +1,13 @@
 ﻿using AsbtCore.UtilsV2;
+using GeocodingApi;
 using GisRouteApi.Models;
 using Itinero;
 using Itinero.Algorithms.Networks;
 using Itinero.Algorithms.Search.Hilbert;
 using Itinero.Algorithms.Weights;
 using Itinero.IO.Osm;
+using Itinero.LocalGeo;
+using Itinero.Profiles;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System;
@@ -78,8 +81,8 @@ namespace GisRouteApi.Services
 
                 var start = router.Resolve(profile, req.Begin.Latitude, req.Begin.Longitude);// 41.259976f, 69.199349f);               
                 var end = router.Resolve(profile, req.End.Latitude, req.End.Longitude); // 41.364306f, 69.264752f);
-
                 var route = router.Calculate(profile, start, end);
+                
                 var json = route.ToGeoJson();
 
                 var res = json.FromJson<Response>();

@@ -2,9 +2,7 @@ using GisRouteApi.Models;
 using GisRouteApi.Services;
 using Itinero;
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json;
 using Swashbuckle.AspNetCore.Annotations;
-using System.Drawing;
 using System.Threading.Tasks;
 
 namespace GisRouteApi.Controllers

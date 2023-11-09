@@ -9,41 +9,12 @@ using System.Windows.Forms;
 using GeoAPI.Geometries;
 using System.Collections.ObjectModel;
 using SharpMap.Layers;
-using SharpMap.Data.Providers;
 using SharpMap;
-using SharpMap.CoordinateSystems;
-using SharpMap.Converters.WellKnownText;
-using GeoAPI.CoordinateSystems;
-using System.Collections;
-using GeoAPI.CoordinateSystems.Transformations;
-using ProjNet.CoordinateSystems;
-using ProjNet.CoordinateSystems.Transformations;
 
 namespace RoutingExample
 {
     public partial class Main : Form
     {
-        
-       public void C()
-        {
-            ProjNet.CoordinateSystems.CoordinateSystemFactory csf = new ProjNet.CoordinateSystems.CoordinateSystemFactory();
-            ProjNet.CoordinateSystems.Transformations.CoordinateTransformationFactory ctf = new ProjNet.CoordinateSystems.Transformations.CoordinateTransformationFactory();
-            Session.Instance.SetCoordinateSystemServices(new SharpMap.CoordinateSystems.CoordinateSystemServices(csf, ctf, SharpMap.Converters.WellKnownText.SpatialReference.GetAllReferenceSystems()));
-            //var csFac = new CoordinateSystemFactory();
-            //string file = @"D:\openStreet\UZB_adm1.prj";
-            //string wkt = System.IO.File.ReadAllText(file);
-            //GeoAPI.CoordinateSystems.ICoordinateSystem csFrom = csFac.CreateFromWkt(wkt);
-            ////(TO) Prj name: "WGS 84 / Pseudo-Mercator"
-            //file = @"D:\openStreet\UZB_adm2.prj";
-            //wkt = System.IO.File.ReadAllText(file);
-            //GeoAPI.CoordinateSystems.ICoordinateSystem csTo = csFac.CreateFromWkt(wkt);
-            ////Step 2) Create transformation class.
-            //CoordinateTransformationFactory ctFac = new CoordinateTransformationFactory();
-            ////To 3857                
-            ////var is ICoordinateTransformation
-            //var ct = ctFac.CreateFromCoordinateSystems(csFrom, csTo);
-
-        }
 
         /// <summary>
         /// The routing system class provides a wrapper for the system.
@@ -53,19 +24,18 @@ namespace RoutingExample
         /// 4 Pass point for the destination
         /// 5 Call calcualte method. 2 MUST be done before 3,4,5 or the mayans will be proved right.
         /// </summary>
+        RoutingSystem.RoutingSystem TheRoutingEngine;
 
         public static string BASEMAPLAYERNAME = "BASEMAP";
 
         public Main()
         {
             InitializeComponent();
-            C();
-            var vlay = new VectorLayer("States");
-            
-            vlay.DataSource = new SharpMap.Data.Providers.ShapeFile("D:\\openStreet\\UZB_adm1.shp");
-            mapBox1.Map.Layers.Add(vlay);
-            mapBox1.Map.ZoomToExtents();
-            mapBox1.Refresh();
+            TheRoutingEngine = new RoutingSystem.RoutingSystem();
+
+            ProjNet.CoordinateSystems.CoordinateSystemFactory csf = new ProjNet.CoordinateSystems.CoordinateSystemFactory();
+            ProjNet.CoordinateSystems.Transformations.CoordinateTransformationFactory ctf = new ProjNet.CoordinateSystems.Transformations.CoordinateTransformationFactory();
+            Session.Instance.SetCoordinateSystemServices(new SharpMap.CoordinateSystems.CoordinateSystemServices(csf, ctf, SharpMap.Converters.WellKnownText.SpatialReference.GetAllReferenceSystems()));
         }
 
         /// <summary>
@@ -124,7 +94,8 @@ namespace RoutingExample
                 mapBox1.Refresh();
                 mapBox1.Update();
 
-                // The Routing Engine needs a copy of the layer.
+                // The Routing Engine needs a copy of the layer. 
+                TheRoutingEngine.AnalysisLayer = TheLayer;
 
                 return true;
 
@@ -137,8 +108,25 @@ namespace RoutingExample
 
         private void button1_Click(object sender, EventArgs e)
         {
+            var theShortestPath = TheRoutingEngine.PerformShortestPathAnalysis(false);
 
-            
+            if (theShortestPath == null)
+            {
+                label4.Text = "No Path Found.";
+                System.Diagnostics.Debug.WriteLine("Either a problem occured or there was no connecting path.");
+            }
+            else
+            {
+                // THIS NEXT BIT ONLY DISPLAYS THE PATH ON THE MAP, AND SOME PATH LENGTH INFORMATION
+                RemoveShortestPathLineFromMapIfPresent();
+                SharpMap.Layers.VectorLayer GraphicsLayer = GetGraphicsLayer(theShortestPath);
+                mapBox1.Map.Layers.Add(GraphicsLayer);
+                mapBox1.Refresh();
+                mapBox1.Update();
+                label4.Text = "Shortest Path Length: " + Math.Round(theShortestPath.Length, 2);
+            }
+
+            // END OF MAP DISPLAY BIT
 
         }
 
@@ -184,9 +172,12 @@ namespace RoutingExample
         }
 
         private void mapBox1_MouseDown(Coordinate worldPos, MouseEventArgs imagePos)
-        {
+        {            
+            if (imagePos.Button == System.Windows.Forms.MouseButtons.Left)
+                TheRoutingEngine.UserSource = worldPos;
 
-            
+            if (imagePos.Button == System.Windows.Forms.MouseButtons.Right)
+                TheRoutingEngine.UserDestination = worldPos;
         }
     }
 }

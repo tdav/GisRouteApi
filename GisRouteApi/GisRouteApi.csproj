@@ -22,6 +22,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <ProjectReference Include="..\GeocodingApi\GeocodingApi.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<None Update="Maps\uzbekistan-latest.osm.pbf">
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
