@@ -1,19 +1,19 @@
 ﻿using AsbtCore.UtilsV2;
-using GeocodingApi;
 using GisRouteApi.Models;
 using Itinero;
 using Itinero.Algorithms.Networks;
 using Itinero.Algorithms.Search.Hilbert;
 using Itinero.Algorithms.Weights;
 using Itinero.IO.Osm;
-using Itinero.LocalGeo;
-using Itinero.Profiles;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System;
 using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
+using NetTopologySuite.IO;
+using System.Collections.Generic;
+using NetTopologySuite.Geometries;
 
 namespace GisRouteApi.Services
 {
@@ -21,6 +21,7 @@ namespace GisRouteApi.Services
     {
         Answere<Response> Calculate(Request<float> req);
         ValueTask<Answere<AddressModel>> GetAddressAsync(string lat, string lon);
+        Answere<string> GetOfflineAddress(double longitude, double latitude);
         ValueTask<Answere<OsrmResponseModel>> GetRouteByOsrmAsync(Request<double> req);
     }
 
@@ -82,7 +83,7 @@ namespace GisRouteApi.Services
                 var start = router.Resolve(profile, req.Begin.Latitude, req.Begin.Longitude);// 41.259976f, 69.199349f);               
                 var end = router.Resolve(profile, req.End.Latitude, req.End.Longitude); // 41.364306f, 69.264752f);
                 var route = router.Calculate(profile, start, end);
-                
+
                 var json = route.ToGeoJson();
 
                 var res = json.FromJson<Response>();
@@ -155,6 +156,56 @@ namespace GisRouteApi.Services
                 logger.LogError("RouterDbService.GetAddressAsync error: {0}", ex.GetAllMessages());
                 return new Answere<AddressModel>(0, "Ошибка при получении адреса", ex.Message);
             }
+        }
+
+        static int FindAdministrativeNameFieldIndex(ShapefileDataReader reader, string fieldName)
+        {
+            for (int i = 0; i < reader.FieldCount; i++)
+            {
+                if (reader.GetName(i).Equals(fieldName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return i;
+                }
+            }
+
+            throw new ArgumentException($"Поле с именем '{fieldName}' не найдено в схеме данных.");
+        }
+
+        public Answere<string> GetOfflineAddress(double longitude, double latitude)
+        {
+            try
+            {
+                var shapefile = "D:\\openStreet\\UZB_adm1.shp";
+                var geometryFactory = new GeometryFactory();
+                using var reader = new ShapefileDataReader(shapefile, geometryFactory);
+                var point = geometryFactory.CreatePoint(new Coordinate(longitude, latitude));
+                string address = string.Empty;
+
+                while (reader.Read())
+                {
+                    var administrativeArea = reader.Geometry;
+
+                    if (administrativeArea.Contains(point))
+                    {
+                        string NAME_0 = reader.GetString(FindAdministrativeNameFieldIndex(reader, "NAME_0"));
+                        string NAME_1 = reader.GetString(FindAdministrativeNameFieldIndex(reader, "NAME_1"));
+                        string ENGTYPE_1 = reader.GetString(FindAdministrativeNameFieldIndex(reader, "ENGTYPE_1"));
+
+                        if (ENGTYPE_1 == "City") ENGTYPE_1 = string.Empty;
+                        address = $"{NAME_0},{NAME_1} {ENGTYPE_1}";
+                        break;
+                    }
+                }
+
+                return new Answere<string>(address);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError("RouterDbService.GetOfflineAddress error: {0}", ex.GetAllMessages());
+                return new Answere<string>(0, ex.Message);
+            }
+
+
         }
     }
 }
