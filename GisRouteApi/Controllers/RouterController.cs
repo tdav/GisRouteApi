@@ -68,7 +68,7 @@ namespace GisRouteApi.Controllers
             return Ok(res.Data);
         }
 
-        [HttpGet("{longitude}/{latitude}")]
-        public Answere<string> GetOfflineAddres(double longitude, double latitude) => service.GetOfflineAddress(longitude, latitude);
+        [HttpGet("address/{longitude}/{latitude}")]
+        public string GetOfflineAddres(double longitude, double latitude) => service.GetOfflineAddress(longitude, latitude);
     }
 }

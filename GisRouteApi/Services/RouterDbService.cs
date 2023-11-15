@@ -13,6 +13,7 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using NetTopologySuite.IO;
 using NetTopologySuite.Geometries;
+using System.Data;
 
 namespace GisRouteApi.Services
 {
@@ -20,7 +21,7 @@ namespace GisRouteApi.Services
     {
         Answere<Response> Calculate(Request<float> req);
         ValueTask<Answere<AddressModel>> GetAddressAsync(string lat, string lon);
-        Answere<string> GetOfflineAddress(double longitude, double latitude);
+        string GetOfflineAddress(double longitude, double latitude);
         ValueTask<Answere<OsrmResponseModel>> GetRouteByOsrmAsync(Request<double> req);
     }
 
@@ -30,8 +31,8 @@ namespace GisRouteApi.Services
         private readonly RouterDb routerDb;
         private readonly ILogger<RouterDbService> logger;
         private readonly HttpClient client;
-        private readonly ShapefileDataReader ShapeDataReader;
         private readonly GeometryFactory GFactory;
+        private readonly string ShapefilePath;
 
         private readonly string Url;
         private readonly string AddressUrl;
@@ -73,9 +74,8 @@ namespace GisRouteApi.Services
             Url = conf["Url"];
             AddressUrl = conf["AddressUrl"];
 
-            var shapefile = AppDomain.CurrentDomain.BaseDirectory + conf["ShapeFileUrl"];
-            var GFactory = new GeometryFactory();
-            var ShapeDataReader = new ShapefileDataReader(shapefile, GFactory);
+            ShapefilePath = AppDomain.CurrentDomain.BaseDirectory + conf["ShapeFileUrl"];
+            GFactory = new GeometryFactory();
         }
 
         public Answere<Response> Calculate(Request<float> req)
@@ -176,36 +176,44 @@ namespace GisRouteApi.Services
             throw new ArgumentException($"Поле с именем '{fieldName}' не найдено в схеме данных.");
         }
 
-        public Answere<string> GetOfflineAddress(double longitude, double latitude)
+        public string GetOfflineAddress(double longitude, double latitude)
         {
             try
             {
+                using var ShDataReader = new ShapefileDataReader(ShapefilePath, GFactory);
                 var point = GFactory.CreatePoint(new Coordinate(longitude, latitude));
-
-                while (ShapeDataReader.Read())
+                while (ShDataReader.Read())
                 {
-                    var administrativeArea = ShapeDataReader.Geometry;
+                    var administrativeArea = ShDataReader.Geometry;
 
                     if (administrativeArea.Contains(point))
                     {
-                        string NAME_0 = ShapeDataReader.GetString(FindAdministrativeNameFieldIndex(ShapeDataReader, "NAME_0"));
-                        string NAME_1 = ShapeDataReader.GetString(FindAdministrativeNameFieldIndex(ShapeDataReader, "NAME_1"));
-                        string ENGTYPE_1 = ShapeDataReader.GetString(FindAdministrativeNameFieldIndex(ShapeDataReader, "ENGTYPE_1"));
+                        string NAME_0 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "NAME_0"));
+                        string NAME_1 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "NAME_1"));
+                        string NAME_2 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "NAME_2"));
+                        string TYPE_2 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "TYPE_2"));
 
-                        if (ENGTYPE_1 == "City") ENGTYPE_1 = string.Empty;
-                        string address = $"{NAME_0},{NAME_1} {ENGTYPE_1}";
+                        if (NAME_1 == NAME_2) NAME_2 = string.Empty;
 
-                        return new Answere<string>(address);
+                        if (NAME_1 == "Tashkent City")
+                            NAME_1 = "Toshkent";
+
+                        if (TYPE_2 == "City")
+                            NAME_1 = $"{NAME_1} Shahri";
+                        else
+                            NAME_1 = $"{NAME_1} tumani";
+
+                        return NAME_1;
                     }
                 }
 
-                return new Answere<string>(0, "Адрес не получен");
+                return "Адрес не получен";
 
             }
             catch (Exception ex)
             {
                 logger.LogError("RouterDbService.GetOfflineAddress error: {0}", ex.GetAllMessages());
-                return new Answere<string>(0, ex.Message);
+                return ex.Message;
             }
         }
     }
