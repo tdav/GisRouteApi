@@ -12,7 +12,6 @@ using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
 using NetTopologySuite.IO;
-using System.Collections.Generic;
 using NetTopologySuite.Geometries;
 
 namespace GisRouteApi.Services
@@ -31,6 +30,8 @@ namespace GisRouteApi.Services
         private readonly RouterDb routerDb;
         private readonly ILogger<RouterDbService> logger;
         private readonly HttpClient client;
+        private readonly ShapefileDataReader ShapeDataReader;
+        private readonly GeometryFactory GFactory;
 
         private readonly string Url;
         private readonly string AddressUrl;
@@ -71,6 +72,10 @@ namespace GisRouteApi.Services
 
             Url = conf["Url"];
             AddressUrl = conf["AddressUrl"];
+
+            var shapefile = AppDomain.CurrentDomain.BaseDirectory + conf["ShapeFileUrl"];
+            var GFactory = new GeometryFactory();
+            var ShapeDataReader = new ShapefileDataReader(shapefile, GFactory);
         }
 
         public Answere<Response> Calculate(Request<float> req)
@@ -175,37 +180,33 @@ namespace GisRouteApi.Services
         {
             try
             {
-                var shapefile = "D:\\openStreet\\UZB_adm1.shp";
-                var geometryFactory = new GeometryFactory();
-                using var reader = new ShapefileDataReader(shapefile, geometryFactory);
-                var point = geometryFactory.CreatePoint(new Coordinate(longitude, latitude));
-                string address = string.Empty;
+                var point = GFactory.CreatePoint(new Coordinate(longitude, latitude));
 
-                while (reader.Read())
+                while (ShapeDataReader.Read())
                 {
-                    var administrativeArea = reader.Geometry;
+                    var administrativeArea = ShapeDataReader.Geometry;
 
                     if (administrativeArea.Contains(point))
                     {
-                        string NAME_0 = reader.GetString(FindAdministrativeNameFieldIndex(reader, "NAME_0"));
-                        string NAME_1 = reader.GetString(FindAdministrativeNameFieldIndex(reader, "NAME_1"));
-                        string ENGTYPE_1 = reader.GetString(FindAdministrativeNameFieldIndex(reader, "ENGTYPE_1"));
+                        string NAME_0 = ShapeDataReader.GetString(FindAdministrativeNameFieldIndex(ShapeDataReader, "NAME_0"));
+                        string NAME_1 = ShapeDataReader.GetString(FindAdministrativeNameFieldIndex(ShapeDataReader, "NAME_1"));
+                        string ENGTYPE_1 = ShapeDataReader.GetString(FindAdministrativeNameFieldIndex(ShapeDataReader, "ENGTYPE_1"));
 
                         if (ENGTYPE_1 == "City") ENGTYPE_1 = string.Empty;
-                        address = $"{NAME_0},{NAME_1} {ENGTYPE_1}";
-                        break;
+                        string address = $"{NAME_0},{NAME_1} {ENGTYPE_1}";
+
+                        return new Answere<string>(address);
                     }
                 }
 
-                return new Answere<string>(address);
+                return new Answere<string>(0, "Адрес не получен");
+
             }
             catch (Exception ex)
             {
                 logger.LogError("RouterDbService.GetOfflineAddress error: {0}", ex.GetAllMessages());
                 return new Answere<string>(0, ex.Message);
             }
-
-
         }
     }
 }
