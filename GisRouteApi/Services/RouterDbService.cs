@@ -13,7 +13,6 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using NetTopologySuite.IO;
 using NetTopologySuite.Geometries;
-using System.Data;
 
 namespace GisRouteApi.Services
 {
@@ -167,10 +166,8 @@ namespace GisRouteApi.Services
         {
             for (int i = 0; i < reader.FieldCount; i++)
             {
-                if (reader.GetName(i).Equals(fieldName, StringComparison.OrdinalIgnoreCase))
-                {
-                    return i;
-                }
+                if (reader.GetName(i).Equals(fieldName, StringComparison.OrdinalIgnoreCase))                
+                    return i;                
             }
 
             throw new ArgumentException($"Поле с именем '{fieldName}' не найдено в схеме данных.");

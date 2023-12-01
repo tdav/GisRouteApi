@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Exceptions;
 using System;
+using System.IO;
 using System.Reflection;
 
 namespace GisRouteApi
@@ -15,18 +16,19 @@ namespace GisRouteApi
 
         public static void Main(string[] args)
         {
-            var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+            //var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
             var configuration = new ConfigurationBuilder()
-                .AddEnvironmentVariables()
+                //.AddEnvironmentVariables()
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-                .AddJsonFile($"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")}.json", optional: true)
+                .SetBasePath(Path.GetDirectoryName(Assembly.GetEntryAssembly().Location))
+                //.AddJsonFile($"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")}.json", optional: true)
                 .Build();
 
             Log.Logger = new LoggerConfiguration()
                               .Enrich.FromLogContext()
                               .Enrich.WithMachineName()
                               .Enrich.WithExceptionDetails()
-                              .Enrich.WithProperty("Environment", environment)
+                              //.Enrich.WithProperty("Environment", environment)
                               .ReadFrom.Configuration(configuration)
                               .CreateLogger();
             try
@@ -35,9 +37,10 @@ namespace GisRouteApi
                      .ConfigureWebHostDefaults(wb => { wb.UseStartup<Startup>(); })
                      .ConfigureAppConfiguration(conf =>
                      {
-                         conf.AddEnvironmentVariables();
+                         conf.SetBasePath(Path.GetDirectoryName(Assembly.GetEntryAssembly().Location));
+                         //conf.AddEnvironmentVariables();
                          conf.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-                         conf.AddJsonFile($"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")}.json", optional: true);
+                         //conf.AddJsonFile($"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")}.json", optional: true);
                      })
                      .UseSerilog()
                      .Build()
