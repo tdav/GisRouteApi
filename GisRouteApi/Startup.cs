@@ -24,6 +24,18 @@ namespace GisRouteApi
                      opt.SerializerSettings.ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore;
                  });
 
+            services.AddCors(options =>
+            {
+                options.AddPolicy("AllowAllHeaders",
+                        builder =>
+                        {
+                            builder
+                            .AllowAnyHeader()
+                            .AllowAnyMethod()
+                            .AllowAnyOrigin();
+                        });
+            });
+
             services.AddEndpointsApiExplorer();
             services.AddSwaggerGen(c =>
             {

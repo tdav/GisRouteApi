@@ -52,9 +52,9 @@ namespace GisRouteApi.Services
                 {
                     routerDb = RouterDb.Deserialize(stream);
 
-                    routerDb.Network.Sort();
-                    routerDb.OptimizeNetwork();
-                    routerDb.Network.Compress();
+                    routerDb.Sort();
+                    routerDb.OptimizeNetwork(50);
+                    routerDb.Compress();
                 }
             }
             else
@@ -82,11 +82,11 @@ namespace GisRouteApi.Services
             try
             {
                 var profile = Itinero.Osm.Vehicles.Vehicle.Car.Fastest(); // the default OSM car profile.             
-                var router = new Router(routerDb);
+                var router = new Router(routerDb);                                           
 
-                var start = router.Resolve(profile, req.Begin.Latitude, req.Begin.Longitude);// 41.259976f, 69.199349f);               
-                var end = router.Resolve(profile, req.End.Latitude, req.End.Longitude); // 41.364306f, 69.264752f);
-                var route = router.Calculate(profile, start, end);
+                var start = router.Resolve(profile, req.Begin.Latitude, req.Begin.Longitude, 200);// 41.259976f, 69.199349f);               
+                var end = router.Resolve(profile, req.End.Latitude, req.End.Longitude, 1000); // 41.364306f, 69.264752f);
+                var route = router.Calculate(profile, start, end);               
 
                 var json = route.ToGeoJson();
 
