@@ -13,6 +13,7 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using NetTopologySuite.IO;
 using NetTopologySuite.Geometries;
+using Itinero.Exceptions;
 
 namespace GisRouteApi.Services
 {
@@ -35,6 +36,9 @@ namespace GisRouteApi.Services
 
         private readonly string Url;
         private readonly string AddressUrl;
+
+        private readonly int StartRoadSearch;
+        private readonly int EndRoadSearch;
 
         public RouterDbService(IConfiguration conf, ILogger<RouterDbService> logger, IHttpClientFactory clientFactory)
         {
@@ -73,6 +77,9 @@ namespace GisRouteApi.Services
             Url = conf["Url"];
             AddressUrl = conf["AddressUrl"];
 
+            StartRoadSearch = Convert.ToInt32(conf["StartRoadSearch"]);
+            EndRoadSearch = Convert.ToInt32(conf["EndRoadSearch"]);
+
             ShapefilePath = AppDomain.CurrentDomain.BaseDirectory + conf["ShapeFileUrl"];
             GFactory = new GeometryFactory();
         }
@@ -84,8 +91,8 @@ namespace GisRouteApi.Services
                 var profile = Itinero.Osm.Vehicles.Vehicle.Car.Fastest(); // the default OSM car profile.             
                 var router = new Router(routerDb);                                           
 
-                var start = router.Resolve(profile, req.Begin.Latitude, req.Begin.Longitude, 200);// 41.259976f, 69.199349f);               
-                var end = router.Resolve(profile, req.End.Latitude, req.End.Longitude, 1000); // 41.364306f, 69.264752f);
+                var start = router.Resolve(profile, req.Begin.Latitude, req.Begin.Longitude, StartRoadSearch);// 41.259976f, 69.199349f);               
+                var end = router.Resolve(profile, req.End.Latitude, req.End.Longitude, EndRoadSearch); // 41.364306f, 69.264752f);
                 var route = router.Calculate(profile, start, end);               
 
                 var json = route.ToGeoJson();
@@ -94,6 +101,11 @@ namespace GisRouteApi.Services
                 res.TotalDistance = route.TotalDistance;
 
                 return new Answere<Response>(1, "", "", res);
+            }
+            catch (ResolveFailedException re)
+            {
+                logger.LogError("RouterDbService.Calculate(ResolveFailedException) error: {0}", re.GetAllMessages());
+                return new Answere<Response>(0, "Ошибка при калькуляции маршрута. Укажите более точные к дороге гео-данные");
             }
             catch (Exception ex)
             {

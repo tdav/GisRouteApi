@@ -23,9 +23,9 @@ namespace GisRouteApi.Controllers
         {
             var res = service.Calculate(m);
             if (res.AnswereId == 1)
-                return Ok(res.Data.TotalDistance);
+                return Ok(new Answere<float>(res.Data.TotalDistance));
 
-            return BadRequest($"{res.AnswereMessage}\n{res.AnswereComment}");
+            return BadRequest(new Answere<float>(res.Data.TotalDistance));
         }
 
         [HttpPost]
