@@ -19,13 +19,13 @@ namespace GisRouteApi.Controllers
         }
 
         [HttpPost("Distance")]        
-        public IActionResult GetDistance(Request<float> m)
+        public Answere<float> GetDistance(Request<float> m)
         {
             var res = service.Calculate(m);
             if (res.AnswereId == 1)
-                return Ok(new Answere<float>(res.Data.TotalDistance));
+                return new Answere<float>(res.Data.TotalDistance);
 
-            return BadRequest(new Answere<float>(res.Data.TotalDistance));
+            return new Answere<float>(0, res.AnswereMessage);
         }
 
         [HttpPost]

@@ -59,6 +59,9 @@ namespace GisRouteApi.Services
                     routerDb.Sort();
                     routerDb.OptimizeNetwork(50);
                     routerDb.Compress();
+
+                    routerDb.Network.Sort();
+                    routerDb.Network.Compress();                                        
                 }
             }
             else
