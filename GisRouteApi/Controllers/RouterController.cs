@@ -18,8 +18,8 @@ namespace GisRouteApi.Controllers
             this.service = service;
         }
 
-        [HttpPost("Distance")]        
-        public Answere<float> GetDistance(Request<float> m)
+        [HttpPost("Distance")]
+        public Answere<float> GetDistance([FromBody] Request<float> m)
         {
             var res = service.Calculate(m);
             if (res.AnswereId == 1)
@@ -29,7 +29,7 @@ namespace GisRouteApi.Controllers
         }
 
         [HttpPost]
-        public Answere<Response> Get(Request<float> m)
+        public Answere<Response> Get([FromBody] Request<float> m)
         {
             //var res = service.Calculate(new PointF(41.311577f, 69.289810f), new PointF(41.378203f, 69.251803f));
             var res = service.Calculate(m);
@@ -37,13 +37,13 @@ namespace GisRouteApi.Controllers
         }
 
         [HttpPost("RouteByOsrm")]
-        public ValueTask<Answere<OsrmResponseModel>> GetRouteByOsrmAsync(Request<double> request)
+        public ValueTask<Answere<OsrmResponseModel>> GetRouteByOsrmAsync([FromBody] Request<double> request)
         {
             return service.GetRouteByOsrmAsync(request);
         }
 
         [HttpPost("DistanceByOsrm")]
-        public async ValueTask<IActionResult> GetDistanceByOsrmAsync(Request<double> request)
+        public async ValueTask<IActionResult> GetDistanceByOsrmAsync([FromBody] Request<double> request)
         {
             var res = await service.GetRouteByOsrmAsync(request);
             if (res.AnswereId == 1)
@@ -68,7 +68,10 @@ namespace GisRouteApi.Controllers
             return Ok(res.Data);
         }
 
-        [HttpGet("address/{longitude}/{latitude}")]
-        public string GetOfflineAddres(double longitude, double latitude) => service.GetOfflineAddress(longitude, latitude);
+        [HttpPost("OfflineAddress")]
+        public Answere<int> GetOfflineAddres([FromBody] Coordinata<double> coordinata)
+        {
+            return service.GetOfflineAddress(coordinata.Longitude, coordinata.Latitude);
+        }
     }
 }

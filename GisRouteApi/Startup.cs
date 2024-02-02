@@ -42,7 +42,7 @@ namespace GisRouteApi
                 c.EnableAnnotations();
             });
             services.AddSingleton<IRouterDbService, RouterDbService>();
-            services.AddSerilog();
+            //services.AddSerilog();
             services.AddHttpClient("RouterDbService").ConfigurePrimaryHttpMessageHandler(_ => new HttpClientHandler
             {
                 ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => { return true; }

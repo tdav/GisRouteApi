@@ -21,7 +21,7 @@ namespace GisRouteApi.Services
     {
         Answere<Response> Calculate(Request<float> req);
         ValueTask<Answere<AddressModel>> GetAddressAsync(string lat, string lon);
-        string GetOfflineAddress(double longitude, double latitude);
+        Answere<int> GetOfflineAddress(double longitude, double latitude);
         ValueTask<Answere<OsrmResponseModel>> GetRouteByOsrmAsync(Request<double> req);
     }
 
@@ -61,7 +61,7 @@ namespace GisRouteApi.Services
                     routerDb.Compress();
 
                     routerDb.Network.Sort();
-                    routerDb.Network.Compress();                                        
+                    routerDb.Network.Compress();
                 }
             }
             else
@@ -92,11 +92,11 @@ namespace GisRouteApi.Services
             try
             {
                 var profile = Itinero.Osm.Vehicles.Vehicle.Car.Fastest(); // the default OSM car profile.             
-                var router = new Router(routerDb);                                           
+                var router = new Router(routerDb);
 
                 var start = router.Resolve(profile, req.Begin.Latitude, req.Begin.Longitude, StartRoadSearch);// 41.259976f, 69.199349f);               
                 var end = router.Resolve(profile, req.End.Latitude, req.End.Longitude, EndRoadSearch); // 41.364306f, 69.264752f);
-                var route = router.Calculate(profile, start, end);               
+                var route = router.Calculate(profile, start, end);
 
                 var json = route.ToGeoJson();
 
@@ -181,14 +181,14 @@ namespace GisRouteApi.Services
         {
             for (int i = 0; i < reader.FieldCount; i++)
             {
-                if (reader.GetName(i).Equals(fieldName, StringComparison.OrdinalIgnoreCase))                
-                    return i;                
+                if (reader.GetName(i).Equals(fieldName, StringComparison.OrdinalIgnoreCase))
+                    return i;
             }
 
             throw new ArgumentException($"Поле с именем '{fieldName}' не найдено в схеме данных.");
         }
 
-        public string GetOfflineAddress(double longitude, double latitude)
+        public Answere<int> GetOfflineAddress(double longitude, double latitude)
         {
             try
             {
@@ -200,32 +200,32 @@ namespace GisRouteApi.Services
 
                     if (administrativeArea.Contains(point))
                     {
-                        string NAME_0 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "NAME_0"));
-                        string NAME_1 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "NAME_1"));
-                        string NAME_2 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "NAME_2"));
-                        string TYPE_2 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "TYPE_2"));
+                        int ID_1 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "ID_1")).ToInt();
+                        return new Answere<int>(ID_1);
+                        //string NAME_0 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "NAME_0"));
+                        //string NAME_1 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "NAME_1"));
+                        //string NAME_2 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "NAME_2"));
+                        //string TYPE_2 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "TYPE_2"));
 
-                        if (NAME_1 == NAME_2) NAME_2 = string.Empty;
+                        //if (NAME_1 == NAME_2) NAME_2 = string.Empty;
 
-                        if (NAME_1 == "Tashkent City")
-                            NAME_1 = "Toshkent";
+                        //if (NAME_1 == "Tashkent City")
+                        //    NAME_1 = "Toshkent";
 
-                        if (TYPE_2 == "City")
-                            NAME_1 = $"{NAME_1} Shahri";
-                        else
-                            NAME_1 = $"{NAME_1} tumani";
+                        //if (TYPE_2 == "City")
+                        //    NAME_1 = $"{NAME_1} Shahri";
+                        //else
+                        //    NAME_1 = $"{NAME_1} tumani";
 
-                        return NAME_1;
+                        //return NAME_1;
                     }
                 }
-
-                return "Адрес не получен";
-
+                return new Answere<int>(0, "Невозможно найти регион по переданным гео-данным");
             }
             catch (Exception ex)
             {
                 logger.LogError("RouterDbService.GetOfflineAddress error: {0}", ex.GetAllMessages());
-                return ex.Message;
+                return new Answere<int>(0, "Невозможно найти регион по переданным гео-данным");
             }
         }
     }
