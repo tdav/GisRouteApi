@@ -28,7 +28,16 @@
 		<None Update="Maps\uzbekistan-latest.osm.pbf">
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
+		<None Update="ShpFiles\geoBoundaries-UZB-ADM1.dbf">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="ShpFiles\geoBoundaries-UZB-ADM1.shp">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
 		<None Update="ShpFiles\license.txt">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="ShpFiles\uzbgeojson.shp">
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 		<None Update="ShpFiles\UZB_adm0.cpg">
@@ -83,6 +92,30 @@
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 		<None Update="ShpFiles\UZB_adm2.shx">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="ShpFiles\uzb_admbnda_adm0_2018b.dbf">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="ShpFiles\uzb_admbnda_adm0_2018b.shp">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="ShpFiles\uzb_admbnda_adm1_2018b.cpg">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="ShpFiles\uzb_admbnda_adm1_2018b.dbf">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="ShpFiles\uzb_admbnda_adm1_2018b.prj">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="ShpFiles\uzb_admbnda_adm1_2018b.qix">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="ShpFiles\uzb_admbnda_adm1_2018b.shp">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="ShpFiles\uzb_admbnda_adm1_2018b.shx">
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 	</ItemGroup>  

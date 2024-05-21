@@ -21,7 +21,7 @@ namespace GisRouteApi.Services
     {
         Answere<Response> Calculate(Request<float> req);
         ValueTask<Answere<AddressModel>> GetAddressAsync(string lat, string lon);
-        Answere<int> GetOfflineAddress(double longitude, double latitude);
+        Answere<int> GetAreaIdByCoordinates(double longitude, double latitude);
         ValueTask<Answere<OsrmResponseModel>> GetRouteByOsrmAsync(Request<double> req);
     }
 
@@ -56,12 +56,12 @@ namespace GisRouteApi.Services
                 {
                     routerDb = RouterDb.Deserialize(stream);
 
-                    routerDb.Sort();
-                    routerDb.OptimizeNetwork(50);
-                    routerDb.Compress();
+                    //routerDb.Sort();
+                    routerDb.OptimizeNetwork(0);
+                    //routerDb.Compress();
 
-                    routerDb.Network.Sort();
-                    routerDb.Network.Compress();
+                    //routerDb.Network.Sort();
+                    //routerDb.Network.Compress();
                 }
             }
             else
@@ -188,7 +188,7 @@ namespace GisRouteApi.Services
             throw new ArgumentException($"Поле с именем '{fieldName}' не найдено в схеме данных.");
         }
 
-        public Answere<int> GetOfflineAddress(double longitude, double latitude)
+        public Answere<int> GetAreaIdByCoordinates(double longitude, double latitude)
         {
             try
             {
@@ -200,26 +200,15 @@ namespace GisRouteApi.Services
 
                     if (administrativeArea.Contains(point))
                     {
-                        int ID_1 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "ID_1")).ToInt();
+                        int ID_1 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "shapeID")).ToInt();
                         return new Answere<int>(ID_1);
-                        //string NAME_0 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "NAME_0"));
-                        //string NAME_1 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "NAME_1"));
-                        //string NAME_2 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "NAME_2"));
-                        //string TYPE_2 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "TYPE_2"));
-
-                        //if (NAME_1 == NAME_2) NAME_2 = string.Empty;
-
-                        //if (NAME_1 == "Tashkent City")
-                        //    NAME_1 = "Toshkent";
-
-                        //if (TYPE_2 == "City")
-                        //    NAME_1 = $"{NAME_1} Shahri";
-                        //else
-                        //    NAME_1 = $"{NAME_1} tumani";
-
-                        //return NAME_1;
                     }
                 }
+
+                int nearst = GetNearestArea(point);
+                if (nearst > -1)
+                    return new Answere<int>(nearst);
+
                 return new Answere<int>(0, "Невозможно найти регион по переданным гео-данным");
             }
             catch (Exception ex)
@@ -227,6 +216,57 @@ namespace GisRouteApi.Services
                 logger.LogError("RouterDbService.GetOfflineAddress error: {0}", ex.GetAllMessages());
                 return new Answere<int>(0, "Невозможно найти регион по переданным гео-данным");
             }
+        }
+
+        public int GetNearestArea(Point point)
+        {
+            try
+            {
+                var geometryFactory = new GeometryFactory();                                
+                var ShDataReader = new ShapefileDataReader(ShapefilePath, geometryFactory);
+                var administrativeNameField = FindAdministrativeNameFieldIndex(ShDataReader, "shapeID");
+
+                double minDistance = double.MaxValue;
+                string nearestAdministrativeId = null;
+                NetTopologySuite.Geometries.Geometry nearestAdministrativeArea = null;
+
+                while (ShDataReader.Read())
+                {
+                    var administrativeArea = ShDataReader.Geometry;
+                    var administrativeName = ShDataReader.GetString(administrativeNameField);
+
+                    double distance = point.Distance(administrativeArea);
+
+                    if (distance < minDistance)
+                    {
+                        minDistance = distance;
+                        nearestAdministrativeId = administrativeName;
+                        nearestAdministrativeArea = administrativeArea;
+                    }
+                }
+
+                const double maxDistanceMeters = 1000.0;
+                double minDistanceMeters = ConvertDegreesToMeters(minDistance);
+
+                if (minDistanceMeters > maxDistanceMeters)
+                    return -1;
+                if (nearestAdministrativeId is not null)
+                    return nearestAdministrativeId.ToInt();
+
+                return -1;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError("RouterDbService.GetOfflineAddress error: {0}", ex.GetAllMessages());
+                return -1;
+            }
+        }
+
+        private static double ConvertDegreesToMeters(double degrees)
+        {
+            // Приблизительный радиус Земли в метрах
+            const double earthRadius = 6371000.0;
+            return degrees * (Math.PI / 180) * earthRadius;
         }
     }
 }

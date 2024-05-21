@@ -68,10 +68,10 @@ namespace GisRouteApi.Controllers
             return Ok(res.Data);
         }
 
-        [HttpPost("OfflineAddress")]
-        public Answere<int> GetOfflineAddres([FromBody] Coordinata<double> coordinata)
+        [HttpPost("GetAreaByCoordinates")]
+        public Answere<int> GetAreaIdByCoordinates([FromBody] Coordinata<double> coordinata)
         {
-            return service.GetOfflineAddress(coordinata.Longitude, coordinata.Latitude);
+            return service.GetAreaIdByCoordinates(coordinata.Longitude, coordinata.Latitude);
         }
     }
 }
