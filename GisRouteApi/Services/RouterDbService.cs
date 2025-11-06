@@ -107,8 +107,9 @@ namespace GisRouteApi.Services
             }
             catch (ResolveFailedException re)
             {
+                double minDistanceMeters = GetDistanceMeters(req.Begin.Latitude, req.Begin.Longitude, req.End.Latitude, req.End.Longitude);
                 logger.LogError("RouterDbService.Calculate(ResolveFailedException) error: {0}", re.GetAllMessages());
-                return new Answere<Response>(0, "Ошибка при калькуляции маршрута. Укажите более точные к дороге гео-данные");
+                return new Answere<Response>(new Response { TotalDistance = minDistanceMeters.ToInt()});
             }
             catch (Exception ex)
             {
@@ -268,5 +269,29 @@ namespace GisRouteApi.Services
             const double earthRadius = 6371000.0;
             return degrees * (Math.PI / 180) * earthRadius;
         }
+
+        private const double EarthRadius = 6371000;
+
+        /// <summary>
+        /// Возвращает расстояние между двумя точками (широта/долгота) в метрах
+        /// </summary>
+        public static double GetDistanceMeters(double lat1, double lon1, double lat2, double lon2)
+        {
+            double dLat = ToRadians(lat2 - lat1);
+            double dLon = ToRadians(lon2 - lon1);
+
+            lat1 = ToRadians(lat1);
+            lat2 = ToRadians(lat2);
+
+            double a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                       Math.Cos(lat1) * Math.Cos(lat2) *
+                       Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+
+            double c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+
+            return EarthRadius * c; // расстояние в метрах
+        }
+
+        private static double ToRadians(double angle) => angle * Math.PI / 180.0;
     }
 }
