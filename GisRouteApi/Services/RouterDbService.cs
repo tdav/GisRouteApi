@@ -2,7 +2,6 @@
 using GisRouteApi.Models;
 using Itinero;
 using Itinero.Algorithms.Networks;
-using Itinero.Algorithms.Search.Hilbert;
 using Itinero.Algorithms.Weights;
 using Itinero.IO.Osm;
 using Microsoft.Extensions.Configuration;
