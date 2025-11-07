@@ -91,11 +91,11 @@ namespace GisRouteApi.Services
         {
             try
             {
-                var profile = Itinero.Osm.Vehicles.Vehicle.Car.Fastest(); // the default OSM car profile.             
+                var profile = Itinero.Osm.Vehicles.Vehicle.Car.Fastest(); // the default OSM car profile                
                 var router = new Router(routerDb);
 
                 var start = router.Resolve(profile, req.Begin.Latitude, req.Begin.Longitude, StartRoadSearch);// 41.259976f, 69.199349f);               
-                var end = router.Resolve(profile, req.End.Latitude, req.End.Longitude, EndRoadSearch); // 41.364306f, 69.264752f);
+                var end = router.Resolve(profile, req.End.Latitude, req.End.Longitude , EndRoadSearch); // 41.364306f, 69.264752f);
                 var route = router.Calculate(profile, start, end);
 
                 var json = route.ToGeoJson();
@@ -104,6 +104,16 @@ namespace GisRouteApi.Services
                 res.TotalDistance = route.TotalDistance;
 
                 return new Answere<Response>(1, "", "", res);
+            }
+            catch (RouteNotFoundException rnfEx)
+            {
+                logger.LogError("RouterDbService.Calculate(RouteNotFoundException) error: {0}", rnfEx.GetAllMessages());
+
+                // Вычисление приблизительного расстояния по прямой линии
+                var distance = CalculateStraightLineDistance(req.Begin.Latitude, req.Begin.Longitude, req.End.Latitude, req.End.Longitude);
+                var res = new Response { TotalDistance = distance + 500 };
+
+                return new Answere<Response>(1, "Маршрут не найден, возвращено приблизительное расстояние", "", res);
             }
             catch (ResolveFailedException re)
             {
@@ -115,6 +125,24 @@ namespace GisRouteApi.Services
                 logger.LogError("RouterDbService.Calculate error: {0}", ex.GetAllMessages());
                 return new Answere<Response>(0, "Ошибка при калькуляции", ex.Message);
             }
+        }
+
+        private float CalculateStraightLineDistance(float lat1, float lon1, float lat2, float lon2)
+        {
+            var R = 6371e3;
+            var f1 = lat1 * Math.PI / 180;
+            var f2 = lat2 * Math.PI / 180;
+            var df = (lat2 - lat1) * Math.PI / 180;
+            var dl = (lon2 - lon1) * Math.PI / 180;
+
+            var a = Math.Sin(df / 2) * Math.Sin(df / 2) +
+                    Math.Cos(f1) * Math.Cos(f2) *
+                    Math.Sin(dl / 2) * Math.Sin(dl / 2);
+            var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+
+            var distance = (float)(R * c);
+
+            return distance;
         }
 
         public async ValueTask<Answere<OsrmResponseModel>> GetRouteByOsrmAsync(Request<double> req)
