@@ -28,6 +28,9 @@
 		<None Update="Maps\uzbekistan-latest.osm.pbf">
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
+		<None Update="router_database.db">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
 		<None Update="ShpFiles\geoBoundaries-UZB-ADM1.dbf">
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
