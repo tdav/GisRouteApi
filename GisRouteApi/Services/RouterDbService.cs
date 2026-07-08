@@ -122,7 +122,7 @@ namespace GisRouteApi.Services
             }
             catch (Exception ex)
             {
-                logger.LogError("RouterDbService.Calculate error: {0}", ex.GetAllMessages());
+                logger.LogError("RouterDbService.Calculate error: {0} model: {1}", ex.GetAllMessages(), req.ToJson());
                 return new Answere<Response>(0, "Ошибка при калькуляции", ex.Message);
             }
         }
