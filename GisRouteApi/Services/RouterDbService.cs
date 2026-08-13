@@ -35,30 +35,27 @@ namespace GisRouteApi.Services
         private const string AreaIdFieldName = "shapeID";
         private const double MaxNearestAreaDistanceMeters = 1_000d;
 
-        private readonly string _routerDbPath;
-        private readonly string _shapefilePath;
-        private readonly string _url;
-        private readonly string _addressUrl;
+        private readonly string routerDbPath;
+        private readonly string shapefilePath;
+        private readonly string url;
+        private readonly string addressUrl;
 
-        private readonly int _startRoadSearch;
-        private readonly int _endRoadSearch;
+        private readonly int startRoadSearch;
+        private readonly int endRoadSearch;
 
-        private readonly RouterDb _routerDb;
-        private readonly Router _router;
-        private readonly Profile _profile;
-        private readonly object _routerSync = new object();
+        private readonly RouterDb routerDb;
+        private readonly Router router;
+        private readonly Profile profile;
+        private readonly object routerSync = new object();
 
-        private readonly ILogger<RouterDbService> _logger;
-        private readonly HttpClient _client;
-        private readonly GeometryFactory _geometryFactory;
-        private readonly AdministrativeArea[] _administrativeAreas;
+        private readonly ILogger<RouterDbService> logger;
+        private readonly HttpClient client;
+        private readonly GeometryFactory geometryFactory;
+        private readonly AdministrativeArea[] administrativeAreas;
 
-        public RouterDbService(
-            IConfiguration configuration,
-            ILogger<RouterDbService> logger,
-            IHttpClientFactory clientFactory)
+        public RouterDbService(IConfiguration configuration, ILogger<RouterDbService> logger, IHttpClientFactory clientFactory)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             if (configuration == null)
                 throw new ArgumentNullException(nameof(configuration));
@@ -66,31 +63,28 @@ namespace GisRouteApi.Services
             if (clientFactory == null)
                 throw new ArgumentNullException(nameof(clientFactory));
 
-            _client = clientFactory.CreateClient("RouterDbService");
+            client = clientFactory.CreateClient("RouterDbService");
 
-            // Нужен для DBF-файлов с Windows-кодировками, например Windows-1251.
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
             var mapPath = ResolveDataFilePath(GetRequiredSetting(configuration, "MapName"));
             var configuredShapefilePath = GetRequiredSetting(configuration, "ShapeFileUrl");
-            _shapefilePath = ResolveDataFilePath(
+            shapefilePath = ResolveDataFilePath(
                 Path.ChangeExtension(configuredShapefilePath, ".shp"));
-            _routerDbPath = Path.Combine(AppContext.BaseDirectory, "router_database.db");
+            routerDbPath = Path.Combine(AppContext.BaseDirectory, "router_database.db");
 
-            _url = GetRequiredSetting(configuration, "Url");
-            _addressUrl = GetRequiredSetting(configuration, "AddressUrl");
+            url = GetRequiredSetting(configuration, "Url");
+            addressUrl = GetRequiredSetting(configuration, "AddressUrl");
 
-            _startRoadSearch = GetPositiveIntSetting(configuration, "StartRoadSearch");
-            _endRoadSearch = GetPositiveIntSetting(configuration, "EndRoadSearch");
+            startRoadSearch = GetPositiveIntSetting(configuration, "StartRoadSearch");
+            endRoadSearch = GetPositiveIntSetting(configuration, "EndRoadSearch");
 
-            _profile = Itinero.Osm.Vehicles.Vehicle.Car.Fastest();
-            _routerDb = LoadOrCreateRouterDb(mapPath);
-            _router = new Router(_routerDb);
+            profile = Itinero.Osm.Vehicles.Vehicle.Car.Fastest();
+            routerDb = LoadOrCreateRouterDb(mapPath);
+            router = new Router(routerDb);
 
-            // Координаты метода GetAreaIdByCoordinates передаются как WGS84:
-            // X = longitude, Y = latitude.
-            _geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
-            _administrativeAreas = LoadAdministrativeAreas();
+            geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
+            administrativeAreas = LoadAdministrativeAreas();
         }
 
         public Answere<Response> Calculate(Request<float> req)
@@ -99,24 +93,11 @@ namespace GisRouteApi.Services
             {
                 Itinero.Route route;
 
-                // Itinero 1.x может обращаться к внутреннему кешу RouterDb
-                // небезопасно при параллельной инициализации профиля.
-                // Один Router + блокировка исключают эту гонку.
-                lock (_routerSync)
+                lock (routerSync)
                 {
-                    var start = _router.Resolve(
-                        _profile,
-                        req.Begin.Latitude,
-                        req.Begin.Longitude,
-                        _startRoadSearch);
-
-                    var end = _router.Resolve(
-                        _profile,
-                        req.End.Latitude,
-                        req.End.Longitude,
-                        _endRoadSearch);
-
-                    route = _router.Calculate(_profile, start, end);
+                    var start = router.Resolve(profile, req.Begin.Latitude, req.Begin.Longitude, startRoadSearch);
+                    var end = router.Resolve(profile, req.End.Latitude, req.End.Longitude, endRoadSearch);
+                    route = router.Calculate(profile, start, end);
                 }
 
                 var response = route.ToGeoJson().FromJson<Response>();
@@ -128,28 +109,21 @@ namespace GisRouteApi.Services
             }
             catch (RouteNotFoundException ex)
             {
-                _logger.LogWarning(ex, "RouterDbService.Calculate: маршрут не найден. Request: {@Request}", req);
+                logger.LogWarning(ex, "RouterDbService.Calculate: маршрут не найден. Request: {@Request}", req);
                 var distance = CalculateStraightLineDistance(req.Begin.Latitude, req.Begin.Longitude, req.End.Latitude, req.End.Longitude);
                 var response = new Response { TotalDistance = distance + 500 };
                 return new Answere<Response>(1, "Маршрут не найден, возвращено приблизительное расстояние", "", response);
             }
             catch (ResolveFailedException ex)
             {
-                _logger.LogWarning(ex, "RouterDbService.Calculate: координаты не привязаны к дорожной сети. Request: {@Request}", req);
-                var distance = CalculateStraightLineDistance(
-                    req.Begin.Latitude,
-                    req.Begin.Longitude,
-                    req.End.Latitude,
-                    req.End.Longitude);
+                logger.LogWarning(ex, "RouterDbService.Calculate: координаты не привязаны к дорожной сети. Request: {@Request}", req);
+                var distance = CalculateStraightLineDistance(req.Begin.Latitude, req.Begin.Longitude, req.End.Latitude, req.End.Longitude);
 
-                return new Answere<Response>(new Response
-                {
-                    TotalDistance = distance.ToInt()
-                });
+                return new Answere<Response>(new Response { TotalDistance = distance.ToInt() });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "RouterDbService.Calculate: ошибка расчёта маршрута. Request: {@Request}", req);
+                logger.LogError(ex, "RouterDbService.Calculate: ошибка расчёта маршрута. Request: {@Request}", req);
                 var distance = CalculateStraightLineDistance(req.Begin.Latitude, req.Begin.Longitude, req.End.Latitude, req.End.Longitude);
                 return new Answere<Response>(1, "Ошибка при калькуляции", ex.Message, new Response { TotalDistance = distance.ToInt() });
             }
@@ -166,7 +140,7 @@ namespace GisRouteApi.Services
 
                 var url = string.Format(
                     CultureInfo.InvariantCulture,
-                    _url,
+                    this.url,
                     beginLongitude,
                     beginLatitude,
                     endLongitude,
@@ -176,9 +150,7 @@ namespace GisRouteApi.Services
                 request.Headers.Add("Accept", "application/json");
                 request.Headers.Add("Accept-Language", "ru-RU");
 
-                using var response = await _client.SendAsync(
-                    request,
-                    HttpCompletionOption.ResponseHeadersRead);
+                using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
 
                 response.EnsureSuccessStatusCode();
 
@@ -190,8 +162,7 @@ namespace GisRouteApi.Services
 
                 var startAddress = await GetAddressAsync(beginLatitude, beginLongitude);
 
-                // Пауза оставлена для ограничения частоты запросов к сервису геокодирования.
-                await Task.Delay(1_000);
+                await Task.Delay(250);
 
                 var endAddress = await GetAddressAsync(endLatitude, endLongitude);
 
@@ -202,15 +173,8 @@ namespace GisRouteApi.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(
-                    ex,
-                    "RouterDbService.GetRouteByOsrmAsync: ошибка расчёта маршрута. Request: {@Request}",
-                    req);
-
-                return new Answere<OsrmResponseModel>(
-                    0,
-                    "Ошибка при калькуляции",
-                    ex.Message);
+                logger.LogError(ex, "RouterDbService.GetRouteByOsrmAsync: ошибка расчёта маршрута. Request: {@Request}", req);
+                return new Answere<OsrmResponseModel>(0, "Ошибка при калькуляции", ex.Message);
             }
         }
 
@@ -218,20 +182,14 @@ namespace GisRouteApi.Services
         {
             try
             {
-                var url = string.Format(
-                    CultureInfo.InvariantCulture,
-                    _addressUrl,
-                    lat,
-                    lon);
+                var url = string.Format(CultureInfo.InvariantCulture, addressUrl, lat, lon);
 
                 using var request = new HttpRequestMessage(HttpMethod.Get, url);
                 request.Headers.Add("Accept", "application/json");
                 request.Headers.Add("Accept-Language", "ru-RU");
                 request.Headers.UserAgent.ParseAdd("GisRouteApi/1.0");
 
-                using var response = await _client.SendAsync(
-                    request,
-                    HttpCompletionOption.ResponseHeadersRead);
+                using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
 
                 response.EnsureSuccessStatusCode();
 
@@ -245,7 +203,7 @@ namespace GisRouteApi.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(
+                logger.LogError(
                     ex,
                     "RouterDbService.GetAddressAsync: ошибка получения адреса. Latitude: {Latitude}, Longitude: {Longitude}",
                     lat,
@@ -262,12 +220,10 @@ namespace GisRouteApi.Services
         {
             try
             {
-                var point = _geometryFactory.CreatePoint(new Coordinate(longitude, latitude));
+                var point = geometryFactory.CreatePoint(new Coordinate(longitude, latitude));
 
-                foreach (var area in _administrativeAreas)
+                foreach (var area in administrativeAreas)
                 {
-                    // Covers, в отличие от Contains, также возвращает true
-                    // для точки на самой границе полигона.
                     if (area.Geometry.Covers(point))
                         return new Answere<int>(area.Id);
                 }
@@ -276,21 +232,12 @@ namespace GisRouteApi.Services
                 if (nearestAreaId > -1)
                     return new Answere<int>(nearestAreaId);
 
-                return new Answere<int>(
-                    0,
-                    "Невозможно найти регион по переданным гео-данным");
+                return new Answere<int>(0, "Невозможно найти регион по переданным гео-данным");
             }
             catch (Exception ex)
             {
-                _logger.LogError(
-                    ex,
-                    "RouterDbService.GetAreaIdByCoordinates: ошибка поиска региона. Longitude: {Longitude}, Latitude: {Latitude}",
-                    longitude,
-                    latitude);
-
-                return new Answere<int>(
-                    0,
-                    "Невозможно найти регион по переданным гео-данным");
+                logger.LogError(ex, "RouterDbService.GetAreaIdByCoordinates: ошибка поиска региона. Longitude: {Longitude}, Latitude: {Latitude}", longitude, latitude);
+                return new Answere<int>(0, "Невозможно найти регион по переданным гео-данным");
             }
         }
 
@@ -305,7 +252,7 @@ namespace GisRouteApi.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(
+                logger.LogError(
                     ex,
                     "RouterDbService.GetNearestArea: ошибка поиска ближайшего региона");
 
@@ -315,22 +262,16 @@ namespace GisRouteApi.Services
 
         private RouterDb LoadOrCreateRouterDb(string mapPath)
         {
-            if (File.Exists(_routerDbPath))
+            if (File.Exists(routerDbPath))
             {
                 try
                 {
-                    using var stream = File.OpenRead(_routerDbPath);
+                    using var stream = File.OpenRead(routerDbPath);
                     return RouterDb.Deserialize(stream);
                 }
                 catch (Exception ex)
                 {
-                    // Старый/повреждённый кеш не удаляется до тех пор,
-                    // пока новая RouterDb полностью не построена и не сериализована.
-                    _logger.LogWarning(
-                        ex,
-                        "Не удалось прочитать RouterDb {RouterDbPath}. База будет пересоздана из {MapPath}",
-                        _routerDbPath,
-                        mapPath);
+                    logger.LogWarning(ex, "Не удалось прочитать RouterDb {RouterDbPath}. База будет пересоздана из {MapPath}", routerDbPath, mapPath);
                 }
             }
 
@@ -352,11 +293,7 @@ namespace GisRouteApi.Services
 
         private void SaveRouterDbAtomically(RouterDb routerDb)
         {
-            var temporaryPath = string.Concat(
-                _routerDbPath,
-                ".",
-                Guid.NewGuid().ToString("N"),
-                ".tmp");
+            var temporaryPath = string.Concat(routerDbPath, ".", Guid.NewGuid().ToString("N"), ".tmp");
 
             try
             {
@@ -370,7 +307,7 @@ namespace GisRouteApi.Services
                     stream.Flush(true);
                 }
 
-                File.Move(temporaryPath, _routerDbPath, true);
+                File.Move(temporaryPath, routerDbPath, true);
             }
             finally
             {
@@ -381,16 +318,16 @@ namespace GisRouteApi.Services
 
         private AdministrativeArea[] LoadAdministrativeAreas()
         {
-            if (!File.Exists(_shapefilePath))
-                throw new FileNotFoundException("SHP-файл административных регионов не найден.", _shapefilePath);
+            if (!File.Exists(shapefilePath))
+                throw new FileNotFoundException("SHP-файл административных регионов не найден.", shapefilePath);
 
             var options = new ShapefileReaderOptions
             {
-                Factory = _geometryFactory,
+                Factory = geometryFactory,
                 GeometryBuilderMode = GeometryBuilderMode.FixInvalidShapes
             };
 
-            var features = Shapefile.ReadAllFeatures(_shapefilePath, options);
+            var features = Shapefile.ReadAllFeatures(shapefilePath, options);
             var areas = new List<AdministrativeArea>(features.Length);
 
             foreach (var feature in features)
@@ -404,15 +341,10 @@ namespace GisRouteApi.Services
 
             if (areas.Count == 0)
             {
-                throw new InvalidDataException(
-                    $"В shapefile '{_shapefilePath}' не найдено ни одного административного региона.");
+                throw new InvalidDataException($"В shapefile '{shapefilePath}' не найдено ни одного административного региона.");
             }
 
-            _logger.LogInformation(
-                "Загружено административных регионов: {AreaCount}. Shapefile: {ShapefilePath}",
-                areas.Count,
-                _shapefilePath);
-
+            logger.LogInformation("Загружено административных регионов: {AreaCount}. Shapefile: {ShapefilePath}", areas.Count, shapefilePath);
             return areas.ToArray();
         }
 
@@ -421,7 +353,7 @@ namespace GisRouteApi.Services
             var nearestAreaId = -1;
             var minDistanceMeters = double.MaxValue;
 
-            foreach (var area in _administrativeAreas)
+            foreach (var area in administrativeAreas)
             {
                 var nearestPoints = DistanceOp.NearestPoints(point, area.Geometry);
                 if (nearestPoints == null || nearestPoints.Length < 2)
@@ -460,15 +392,13 @@ namespace GisRouteApi.Services
 
             if (actualFieldName == null)
             {
-                throw new InvalidDataException(
-                    $"Поле '{AreaIdFieldName}' не найдено в DBF-файле shapefile.");
+                throw new InvalidDataException($"Поле '{AreaIdFieldName}' не найдено в DBF-файле shapefile.");
             }
 
             var rawValue = attributes[actualFieldName];
             if (rawValue == null || rawValue == DBNull.Value)
             {
-                throw new InvalidDataException(
-                    $"Поле '{actualFieldName}' содержит пустое значение.");
+                throw new InvalidDataException($"Поле '{actualFieldName}' содержит пустое значение.");
             }
 
             try
@@ -479,9 +409,7 @@ namespace GisRouteApi.Services
                                        ex is InvalidCastException ||
                                        ex is OverflowException)
             {
-                throw new InvalidDataException(
-                    $"Значение '{rawValue}' поля '{actualFieldName}' невозможно преобразовать в Int32.",
-                    ex);
+                throw new InvalidDataException($"Значение '{rawValue}' поля '{actualFieldName}' невозможно преобразовать в Int32.", ex);
             }
         }
 
@@ -541,8 +469,7 @@ namespace GisRouteApi.Services
             if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result) ||
                 result <= 0)
             {
-                throw new InvalidOperationException(
-                    $"Параметр конфигурации '{key}' должен быть положительным целым числом.");
+                throw new InvalidOperationException($"Параметр конфигурации '{key}' должен быть положительным целым числом.");
             }
 
             return result;
