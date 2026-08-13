@@ -1,18 +1,24 @@
 ﻿using AsbtCore.UtilsV2;
 using GisRouteApi.Models;
 using Itinero;
-using Itinero.Algorithms.Networks;
-using Itinero.Algorithms.Weights;
+using Itinero.Exceptions;
 using Itinero.IO.Osm;
+using Itinero.Profiles;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using System;
-using System.IO;
-using System.Net.Http;
-using System.Threading.Tasks;
-using NetTopologySuite.IO;
+using NetTopologySuite.Features;
 using NetTopologySuite.Geometries;
-using Itinero.Exceptions;
+using NetTopologySuite.IO.Esri;
+using NetTopologySuite.IO.Esri.Shapefiles.Readers;
+using NetTopologySuite.Operation.Distance;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
 
 namespace GisRouteApi.Services
 {
@@ -26,158 +32,185 @@ namespace GisRouteApi.Services
 
     public class RouterDbService : IRouterDbService
     {
-        private readonly string RouterDbPath;
-        private readonly RouterDb routerDb;
-        private readonly ILogger<RouterDbService> logger;
-        private readonly HttpClient client;
-        private readonly GeometryFactory GFactory;
-        private readonly string ShapefilePath;
+        private const string AreaIdFieldName = "shapeID";
+        private const double MaxNearestAreaDistanceMeters = 1_000d;
 
-        private readonly string Url;
-        private readonly string AddressUrl;
+        private readonly string _routerDbPath;
+        private readonly string _shapefilePath;
+        private readonly string _url;
+        private readonly string _addressUrl;
 
-        private readonly int StartRoadSearch;
-        private readonly int EndRoadSearch;
+        private readonly int _startRoadSearch;
+        private readonly int _endRoadSearch;
 
-        public RouterDbService(IConfiguration conf, ILogger<RouterDbService> logger, IHttpClientFactory clientFactory)
+        private readonly RouterDb _routerDb;
+        private readonly Router _router;
+        private readonly Profile _profile;
+        private readonly object _routerSync = new object();
+
+        private readonly ILogger<RouterDbService> _logger;
+        private readonly HttpClient _client;
+        private readonly GeometryFactory _geometryFactory;
+        private readonly AdministrativeArea[] _administrativeAreas;
+
+        public RouterDbService(
+            IConfiguration configuration,
+            ILogger<RouterDbService> logger,
+            IHttpClientFactory clientFactory)
         {
-            this.logger = logger;
-            string mapPath = AppDomain.CurrentDomain.BaseDirectory + conf["MapName"];
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-            client = clientFactory.CreateClient("RouterDbService");
+            if (configuration == null)
+                throw new ArgumentNullException(nameof(configuration));
 
-            routerDb = new RouterDb();
-            RouterDbPath = $"{AppDomain.CurrentDomain.BaseDirectory}router_database.db";
+            if (clientFactory == null)
+                throw new ArgumentNullException(nameof(clientFactory));
 
-            if (File.Exists(RouterDbPath))
-            {
-                using (var stream = new FileInfo(RouterDbPath).Open(FileMode.Open))
-                {
-                    routerDb = RouterDb.Deserialize(stream);
+            _client = clientFactory.CreateClient("RouterDbService");
 
-                    //routerDb.Sort();
-                    routerDb.OptimizeNetwork(0);
-                    //routerDb.Compress();
+            // Нужен для DBF-файлов с Windows-кодировками, например Windows-1251.
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-                    //routerDb.Network.Sort();
-                    //routerDb.Network.Compress();
-                }
-            }
-            else
-            {
-                using (var stream = new FileInfo(mapPath).OpenRead())
-                {
-                    routerDb.LoadOsmData(stream, Itinero.Osm.Vehicles.Vehicle.Car);
-                }
+            var mapPath = ResolveDataFilePath(GetRequiredSetting(configuration, "MapName"));
+            var configuredShapefilePath = GetRequiredSetting(configuration, "ShapeFileUrl");
+            _shapefilePath = ResolveDataFilePath(
+                Path.ChangeExtension(configuredShapefilePath, ".shp"));
+            _routerDbPath = Path.Combine(AppContext.BaseDirectory, "router_database.db");
 
-                using (var stream = new FileInfo(RouterDbPath).Open(FileMode.Create))
-                {
-                    routerDb.Serialize(stream);
-                }
-            }
+            _url = GetRequiredSetting(configuration, "Url");
+            _addressUrl = GetRequiredSetting(configuration, "AddressUrl");
 
-            Url = conf["Url"];
-            AddressUrl = conf["AddressUrl"];
+            _startRoadSearch = GetPositiveIntSetting(configuration, "StartRoadSearch");
+            _endRoadSearch = GetPositiveIntSetting(configuration, "EndRoadSearch");
 
-            StartRoadSearch = Convert.ToInt32(conf["StartRoadSearch"]);
-            EndRoadSearch = Convert.ToInt32(conf["EndRoadSearch"]);
+            _profile = Itinero.Osm.Vehicles.Vehicle.Car.Fastest();
+            _routerDb = LoadOrCreateRouterDb(mapPath);
+            _router = new Router(_routerDb);
 
-            ShapefilePath = AppDomain.CurrentDomain.BaseDirectory + conf["ShapeFileUrl"];
-            GFactory = new GeometryFactory();
+            // Координаты метода GetAreaIdByCoordinates передаются как WGS84:
+            // X = longitude, Y = latitude.
+            _geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
+            _administrativeAreas = LoadAdministrativeAreas();
         }
 
         public Answere<Response> Calculate(Request<float> req)
         {
             try
             {
-                var profile = Itinero.Osm.Vehicles.Vehicle.Car.Fastest(); // the default OSM car profile                
-                var router = new Router(routerDb);
+                Itinero.Route route;
 
-                var start = router.Resolve(profile, req.Begin.Latitude, req.Begin.Longitude, StartRoadSearch);// 41.259976f, 69.199349f);               
-                var end = router.Resolve(profile, req.End.Latitude, req.End.Longitude , EndRoadSearch); // 41.364306f, 69.264752f);
-                var route = router.Calculate(profile, start, end);
+                // Itinero 1.x может обращаться к внутреннему кешу RouterDb
+                // небезопасно при параллельной инициализации профиля.
+                // Один Router + блокировка исключают эту гонку.
+                lock (_routerSync)
+                {
+                    var start = _router.Resolve(
+                        _profile,
+                        req.Begin.Latitude,
+                        req.Begin.Longitude,
+                        _startRoadSearch);
 
-                var json = route.ToGeoJson();
+                    var end = _router.Resolve(
+                        _profile,
+                        req.End.Latitude,
+                        req.End.Longitude,
+                        _endRoadSearch);
 
-                var res = json.FromJson<Response>();
-                res.TotalDistance = route.TotalDistance;
+                    route = _router.Calculate(_profile, start, end);
+                }
 
-                return new Answere<Response>(1, "", "", res);
+                var response = route.ToGeoJson().FromJson<Response>();
+                if (response == null)
+                    throw new InvalidDataException("Itinero вернул некорректный GeoJSON маршрута.");
+
+                response.TotalDistance = route.TotalDistance;
+                return new Answere<Response>(1, "", "", response);
             }
-            catch (RouteNotFoundException rnfEx)
+            catch (RouteNotFoundException ex)
             {
-                logger.LogError("RouterDbService.Calculate(RouteNotFoundException) error: {0}", rnfEx.GetAllMessages());
-
-                // Вычисление приблизительного расстояния по прямой линии
+                _logger.LogWarning(ex, "RouterDbService.Calculate: маршрут не найден. Request: {@Request}", req);
                 var distance = CalculateStraightLineDistance(req.Begin.Latitude, req.Begin.Longitude, req.End.Latitude, req.End.Longitude);
-                var res = new Response { TotalDistance = distance + 500 };
-
-                return new Answere<Response>(1, "Маршрут не найден, возвращено приблизительное расстояние", "", res);
+                var response = new Response { TotalDistance = distance + 500 };
+                return new Answere<Response>(1, "Маршрут не найден, возвращено приблизительное расстояние", "", response);
             }
-            catch (ResolveFailedException re)
+            catch (ResolveFailedException ex)
             {
-                double minDistanceMeters = GetDistanceMeters(req.Begin.Latitude, req.Begin.Longitude, req.End.Latitude, req.End.Longitude);
-                logger.LogError("RouterDbService.Calculate(ResolveFailedException) error: {0}", re.GetAllMessages());
-                return new Answere<Response>(new Response { TotalDistance = minDistanceMeters.ToInt()});
+                _logger.LogWarning(ex, "RouterDbService.Calculate: координаты не привязаны к дорожной сети. Request: {@Request}", req);
+                var distance = CalculateStraightLineDistance(
+                    req.Begin.Latitude,
+                    req.Begin.Longitude,
+                    req.End.Latitude,
+                    req.End.Longitude);
+
+                return new Answere<Response>(new Response
+                {
+                    TotalDistance = distance.ToInt()
+                });
             }
             catch (Exception ex)
             {
-                logger.LogError("RouterDbService.Calculate error: {0} model: {1}", ex.GetAllMessages(), req.ToJson());
-                return new Answere<Response>(0, "Ошибка при калькуляции", ex.Message);
+                _logger.LogError(ex, "RouterDbService.Calculate: ошибка расчёта маршрута. Request: {@Request}", req);
+                var distance = CalculateStraightLineDistance(req.Begin.Latitude, req.Begin.Longitude, req.End.Latitude, req.End.Longitude);
+                return new Answere<Response>(1, "Ошибка при калькуляции", ex.Message, new Response { TotalDistance = distance.ToInt() });
             }
-        }
-
-        private float CalculateStraightLineDistance(float lat1, float lon1, float lat2, float lon2)
-        {
-            var R = 6371e3;
-            var f1 = lat1 * Math.PI / 180;
-            var f2 = lat2 * Math.PI / 180;
-            var df = (lat2 - lat1) * Math.PI / 180;
-            var dl = (lon2 - lon1) * Math.PI / 180;
-
-            var a = Math.Sin(df / 2) * Math.Sin(df / 2) +
-                    Math.Cos(f1) * Math.Cos(f2) *
-                    Math.Sin(dl / 2) * Math.Sin(dl / 2);
-            var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-
-            var distance = (float)(R * c);
-
-            return distance;
         }
 
         public async ValueTask<Answere<OsrmResponseModel>> GetRouteByOsrmAsync(Request<double> req)
         {
             try
             {
-                string x1 = req.Begin.Longitude.ToInvariantString();
-                string x2 = req.Begin.Latitude.ToInvariantString();
-                string y1 = req.End.Longitude.ToInvariantString();
-                string y2 = req.End.Latitude.ToInvariantString();
+                var beginLongitude = req.Begin.Longitude.ToInvariantString();
+                var beginLatitude = req.Begin.Latitude.ToInvariantString();
+                var endLongitude = req.End.Longitude.ToInvariantString();
+                var endLatitude = req.End.Latitude.ToInvariantString();
 
-                string url = string.Format(Url, x1, x2, y1, y2);
-                var request = new HttpRequestMessage(HttpMethod.Get, url);
+                var url = string.Format(
+                    CultureInfo.InvariantCulture,
+                    _url,
+                    beginLongitude,
+                    beginLatitude,
+                    endLongitude,
+                    endLatitude);
+
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
                 request.Headers.Add("Accept", "application/json");
                 request.Headers.Add("Accept-Language", "ru-RU");
 
-                var res = await client.SendAsync(request);
-                var js = await res.Content.ReadAsStringAsync();
+                using var response = await _client.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead);
 
-                var model = js.FromJson<OsrmResponseModel>();
+                response.EnsureSuccessStatusCode();
 
-                var startAdr = await GetAddressAsync(x2, x1);
-                await Task.Delay(1000);
-                var endAdr = await GetAddressAsync(y2, y1);
+                var json = await response.Content.ReadAsStringAsync();
+                var model = json.FromJson<OsrmResponseModel>();
 
-                model.StartAddress = startAdr.Data;
-                model.EndAddress = endAdr.Data;
+                if (model == null)
+                    throw new InvalidDataException("OSRM вернул пустой или некорректный JSON.");
+
+                var startAddress = await GetAddressAsync(beginLatitude, beginLongitude);
+
+                // Пауза оставлена для ограничения частоты запросов к сервису геокодирования.
+                await Task.Delay(1_000);
+
+                var endAddress = await GetAddressAsync(endLatitude, endLongitude);
+
+                model.StartAddress = startAddress.Data;
+                model.EndAddress = endAddress.Data;
 
                 return new Answere<OsrmResponseModel>(model);
             }
             catch (Exception ex)
             {
-                logger.LogError("RouterDbService.GetByOsrmAsync error: {0}", ex.GetAllMessages());
-                return new Answere<OsrmResponseModel>(0, "Ошибка при калькуляции", ex.Message);
+                _logger.LogError(
+                    ex,
+                    "RouterDbService.GetRouteByOsrmAsync: ошибка расчёта маршрута. Request: {@Request}",
+                    req);
 
+                return new Answere<OsrmResponseModel>(
+                    0,
+                    "Ошибка при калькуляции",
+                    ex.Message);
             }
         }
 
@@ -185,64 +218,79 @@ namespace GisRouteApi.Services
         {
             try
             {
-                string url = string.Format(AddressUrl, lat, lon);
-                var request = new HttpRequestMessage(HttpMethod.Get, url);
-                request.Headers.Add("Accept", "*/*");
-                request.Headers.Add("Accept-Encoding", "gzip, deflate, br");
+                var url = string.Format(
+                    CultureInfo.InvariantCulture,
+                    _addressUrl,
+                    lat,
+                    lon);
+
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.Add("Accept", "application/json");
                 request.Headers.Add("Accept-Language", "ru-RU");
-                request.Headers.Add("User-Agent", "C# App");
+                request.Headers.UserAgent.ParseAdd("GisRouteApi/1.0");
 
-                var res = await client.SendAsync(request);
-                var js = await res.Content.ReadAsStringAsync();
+                using var response = await _client.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead);
 
-                var model = js.FromJson<AddressModel>();
+                response.EnsureSuccessStatusCode();
+
+                var json = await response.Content.ReadAsStringAsync();
+                var model = json.FromJson<AddressModel>();
+
+                if (model == null)
+                    throw new InvalidDataException("Сервис геокодирования вернул пустой или некорректный JSON.");
+
                 return new Answere<AddressModel>(1, "OK", "", model);
             }
             catch (Exception ex)
             {
-                logger.LogError("RouterDbService.GetAddressAsync error: {0}", ex.GetAllMessages());
-                return new Answere<AddressModel>(0, "Ошибка при получении адреса", ex.Message);
-            }
-        }
+                _logger.LogError(
+                    ex,
+                    "RouterDbService.GetAddressAsync: ошибка получения адреса. Latitude: {Latitude}, Longitude: {Longitude}",
+                    lat,
+                    lon);
 
-        static int FindAdministrativeNameFieldIndex(ShapefileDataReader reader, string fieldName)
-        {
-            for (int i = 0; i < reader.FieldCount; i++)
-            {
-                if (reader.GetName(i).Equals(fieldName, StringComparison.OrdinalIgnoreCase))
-                    return i;
+                return new Answere<AddressModel>(
+                    0,
+                    "Ошибка при получении адреса",
+                    ex.Message);
             }
-
-            throw new ArgumentException($"Поле с именем '{fieldName}' не найдено в схеме данных.");
         }
 
         public Answere<int> GetAreaIdByCoordinates(double longitude, double latitude)
         {
             try
             {
-                using var ShDataReader = new ShapefileDataReader(ShapefilePath, GFactory);
-                var point = GFactory.CreatePoint(new Coordinate(longitude, latitude));
-                while (ShDataReader.Read())
-                {
-                    var administrativeArea = ShDataReader.Geometry;
+                var point = _geometryFactory.CreatePoint(new Coordinate(longitude, latitude));
 
-                    if (administrativeArea.Contains(point))
-                    {
-                        int ID_1 = ShDataReader.GetString(FindAdministrativeNameFieldIndex(ShDataReader, "shapeID")).ToInt();
-                        return new Answere<int>(ID_1);
-                    }
+                foreach (var area in _administrativeAreas)
+                {
+                    // Covers, в отличие от Contains, также возвращает true
+                    // для точки на самой границе полигона.
+                    if (area.Geometry.Covers(point))
+                        return new Answere<int>(area.Id);
                 }
 
-                int nearst = GetNearestArea(point);
-                if (nearst > -1)
-                    return new Answere<int>(nearst);
+                var nearestAreaId = FindNearestAreaId(point);
+                if (nearestAreaId > -1)
+                    return new Answere<int>(nearestAreaId);
 
-                return new Answere<int>(0, "Невозможно найти регион по переданным гео-данным");
+                return new Answere<int>(
+                    0,
+                    "Невозможно найти регион по переданным гео-данным");
             }
             catch (Exception ex)
             {
-                logger.LogError("RouterDbService.GetOfflineAddress error: {0}", ex.GetAllMessages());
-                return new Answere<int>(0, "Невозможно найти регион по переданным гео-данным");
+                _logger.LogError(
+                    ex,
+                    "RouterDbService.GetAreaIdByCoordinates: ошибка поиска региона. Longitude: {Longitude}, Latitude: {Latitude}",
+                    longitude,
+                    latitude);
+
+                return new Answere<int>(
+                    0,
+                    "Невозможно найти регион по переданным гео-данным");
             }
         }
 
@@ -250,75 +298,278 @@ namespace GisRouteApi.Services
         {
             try
             {
-                var geometryFactory = new GeometryFactory();                                
-                var ShDataReader = new ShapefileDataReader(ShapefilePath, geometryFactory);
-                var administrativeNameField = FindAdministrativeNameFieldIndex(ShDataReader, "shapeID");
-
-                double minDistance = double.MaxValue;
-                string nearestAdministrativeId = null;
-                NetTopologySuite.Geometries.Geometry nearestAdministrativeArea = null;
-
-                while (ShDataReader.Read())
-                {
-                    var administrativeArea = ShDataReader.Geometry;
-                    var administrativeName = ShDataReader.GetString(administrativeNameField);
-
-                    double distance = point.Distance(administrativeArea);
-
-                    if (distance < minDistance)
-                    {
-                        minDistance = distance;
-                        nearestAdministrativeId = administrativeName;
-                        nearestAdministrativeArea = administrativeArea;
-                    }
-                }
-
-                const double maxDistanceMeters = 1000.0;
-                double minDistanceMeters = ConvertDegreesToMeters(minDistance);
-
-                if (minDistanceMeters > maxDistanceMeters)
+                if (point == null)
                     return -1;
-                if (nearestAdministrativeId is not null)
-                    return nearestAdministrativeId.ToInt();
 
-                return -1;
+                return FindNearestAreaId(point);
             }
             catch (Exception ex)
             {
-                logger.LogError("RouterDbService.GetOfflineAddress error: {0}", ex.GetAllMessages());
+                _logger.LogError(
+                    ex,
+                    "RouterDbService.GetNearestArea: ошибка поиска ближайшего региона");
+
                 return -1;
             }
         }
 
-        private static double ConvertDegreesToMeters(double degrees)
+        private RouterDb LoadOrCreateRouterDb(string mapPath)
         {
-            // Приблизительный радиус Земли в метрах
-            const double earthRadius = 6371000.0;
-            return degrees * (Math.PI / 180) * earthRadius;
+            if (File.Exists(_routerDbPath))
+            {
+                try
+                {
+                    using var stream = File.OpenRead(_routerDbPath);
+                    return RouterDb.Deserialize(stream);
+                }
+                catch (Exception ex)
+                {
+                    // Старый/повреждённый кеш не удаляется до тех пор,
+                    // пока новая RouterDb полностью не построена и не сериализована.
+                    _logger.LogWarning(
+                        ex,
+                        "Не удалось прочитать RouterDb {RouterDbPath}. База будет пересоздана из {MapPath}",
+                        _routerDbPath,
+                        mapPath);
+                }
+            }
+
+            if (!File.Exists(mapPath))
+                throw new FileNotFoundException("OSM-файл карты не найден.", mapPath);
+
+            var routerDb = new RouterDb();
+
+            using (var stream = File.OpenRead(mapPath))
+            {
+                routerDb.LoadOsmData(
+                    stream,
+                    Itinero.Osm.Vehicles.Vehicle.Car);
+            }
+
+            SaveRouterDbAtomically(routerDb);
+            return routerDb;
         }
 
-        private const double EarthRadius = 6371000;
-
-        /// <summary>
-        /// Возвращает расстояние между двумя точками (широта/долгота) в метрах
-        /// </summary>
-        public static double GetDistanceMeters(double lat1, double lon1, double lat2, double lon2)
+        private void SaveRouterDbAtomically(RouterDb routerDb)
         {
-            double dLat = ToRadians(lat2 - lat1);
-            double dLon = ToRadians(lon2 - lon1);
+            var temporaryPath = string.Concat(
+                _routerDbPath,
+                ".",
+                Guid.NewGuid().ToString("N"),
+                ".tmp");
 
-            lat1 = ToRadians(lat1);
-            lat2 = ToRadians(lat2);
+            try
+            {
+                using (var stream = new FileStream(
+                           temporaryPath,
+                           FileMode.CreateNew,
+                           FileAccess.Write,
+                           FileShare.None))
+                {
+                    routerDb.Serialize(stream);
+                    stream.Flush(true);
+                }
 
-            double a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
-                       Math.Cos(lat1) * Math.Cos(lat2) *
-                       Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
-
-            double c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-
-            return EarthRadius * c; // расстояние в метрах
+                File.Move(temporaryPath, _routerDbPath, true);
+            }
+            finally
+            {
+                if (File.Exists(temporaryPath))
+                    File.Delete(temporaryPath);
+            }
         }
 
-        private static double ToRadians(double angle) => angle * Math.PI / 180.0;
+        private AdministrativeArea[] LoadAdministrativeAreas()
+        {
+            if (!File.Exists(_shapefilePath))
+                throw new FileNotFoundException("SHP-файл административных регионов не найден.", _shapefilePath);
+
+            var options = new ShapefileReaderOptions
+            {
+                Factory = _geometryFactory,
+                GeometryBuilderMode = GeometryBuilderMode.FixInvalidShapes
+            };
+
+            var features = Shapefile.ReadAllFeatures(_shapefilePath, options);
+            var areas = new List<AdministrativeArea>(features.Length);
+
+            foreach (var feature in features)
+            {
+                if (feature.Geometry == null || feature.Geometry.IsEmpty)
+                    continue;
+
+                var areaId = GetAreaId(feature.Attributes);
+                areas.Add(new AdministrativeArea(areaId, feature.Geometry));
+            }
+
+            if (areas.Count == 0)
+            {
+                throw new InvalidDataException(
+                    $"В shapefile '{_shapefilePath}' не найдено ни одного административного региона.");
+            }
+
+            _logger.LogInformation(
+                "Загружено административных регионов: {AreaCount}. Shapefile: {ShapefilePath}",
+                areas.Count,
+                _shapefilePath);
+
+            return areas.ToArray();
+        }
+
+        private int FindNearestAreaId(Point point)
+        {
+            var nearestAreaId = -1;
+            var minDistanceMeters = double.MaxValue;
+
+            foreach (var area in _administrativeAreas)
+            {
+                var nearestPoints = DistanceOp.NearestPoints(point, area.Geometry);
+                if (nearestPoints == null || nearestPoints.Length < 2)
+                    continue;
+
+                var nearestPoint = nearestPoints[1];
+                var distanceMeters = CalculateDistanceMeters(
+                    point.Y,
+                    point.X,
+                    nearestPoint.Y,
+                    nearestPoint.X);
+
+                if (distanceMeters >= minDistanceMeters)
+                    continue;
+
+                minDistanceMeters = distanceMeters;
+                nearestAreaId = area.Id;
+            }
+
+            return minDistanceMeters <= MaxNearestAreaDistanceMeters
+                ? nearestAreaId
+                : -1;
+        }
+
+        private static int GetAreaId(IAttributesTable attributes)
+        {
+            if (attributes == null)
+                throw new InvalidDataException("В shapefile отсутствует таблица атрибутов.");
+
+            var actualFieldName = attributes
+                .GetNames()
+                .FirstOrDefault(name => string.Equals(
+                    name,
+                    AreaIdFieldName,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (actualFieldName == null)
+            {
+                throw new InvalidDataException(
+                    $"Поле '{AreaIdFieldName}' не найдено в DBF-файле shapefile.");
+            }
+
+            var rawValue = attributes[actualFieldName];
+            if (rawValue == null || rawValue == DBNull.Value)
+            {
+                throw new InvalidDataException(
+                    $"Поле '{actualFieldName}' содержит пустое значение.");
+            }
+
+            try
+            {
+                return Convert.ToInt32(rawValue, CultureInfo.InvariantCulture);
+            }
+            catch (Exception ex) when (ex is FormatException ||
+                                       ex is InvalidCastException ||
+                                       ex is OverflowException)
+            {
+                throw new InvalidDataException(
+                    $"Значение '{rawValue}' поля '{actualFieldName}' невозможно преобразовать в Int32.",
+                    ex);
+            }
+        }
+
+        private static float CalculateStraightLineDistance(
+            float latitude1,
+            float longitude1,
+            float latitude2,
+            float longitude2)
+        {
+            return (float)CalculateDistanceMeters(
+                latitude1,
+                longitude1,
+                latitude2,
+                longitude2);
+        }
+
+        private static double CalculateDistanceMeters(
+            double latitude1,
+            double longitude1,
+            double latitude2,
+            double longitude2)
+        {
+            const double earthRadiusMeters = 6_371_000d;
+
+            var latitude1Radians = DegreesToRadians(latitude1);
+            var latitude2Radians = DegreesToRadians(latitude2);
+            var latitudeDelta = DegreesToRadians(latitude2 - latitude1);
+            var longitudeDelta = DegreesToRadians(longitude2 - longitude1);
+
+            var a = Math.Sin(latitudeDelta / 2d) * Math.Sin(latitudeDelta / 2d) +
+                    Math.Cos(latitude1Radians) * Math.Cos(latitude2Radians) *
+                    Math.Sin(longitudeDelta / 2d) * Math.Sin(longitudeDelta / 2d);
+
+            var c = 2d * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1d - a));
+            return earthRadiusMeters * c;
+        }
+
+        private static double DegreesToRadians(double degrees)
+        {
+            return degrees * Math.PI / 180d;
+        }
+
+        private static string GetRequiredSetting(IConfiguration configuration, string key)
+        {
+            var value = configuration[key];
+
+            if (string.IsNullOrWhiteSpace(value))
+                throw new InvalidOperationException($"Не задан параметр конфигурации '{key}'.");
+
+            return value;
+        }
+
+        private static int GetPositiveIntSetting(IConfiguration configuration, string key)
+        {
+            var value = GetRequiredSetting(configuration, key);
+
+            if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result) ||
+                result <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"Параметр конфигурации '{key}' должен быть положительным целым числом.");
+            }
+
+            return result;
+        }
+
+        private static string ResolveDataFilePath(string configuredPath)
+        {
+            if (Path.IsPathFullyQualified(configuredPath) && File.Exists(configuredPath))
+                return configuredPath;
+
+            var relativePath = configuredPath.TrimStart(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
+
+            return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, relativePath));
+        }
+
+        private sealed class AdministrativeArea
+        {
+            public AdministrativeArea(int id, NetTopologySuite.Geometries.Geometry geometry)
+            {
+                Id = id;
+                Geometry = geometry ?? throw new ArgumentNullException(nameof(geometry));
+            }
+
+            public int Id { get; }
+            public NetTopologySuite.Geometries.Geometry Geometry { get; }
+        }
     }
 }
