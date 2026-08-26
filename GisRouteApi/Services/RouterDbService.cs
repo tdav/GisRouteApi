@@ -69,8 +69,7 @@ namespace GisRouteApi.Services
 
             var mapPath = ResolveDataFilePath(GetRequiredSetting(configuration, "MapName"));
             var configuredShapefilePath = GetRequiredSetting(configuration, "ShapeFileUrl");
-            shapefilePath = ResolveDataFilePath(
-                Path.ChangeExtension(configuredShapefilePath, ".shp"));
+            shapefilePath = ResolveDataFilePath(Path.ChangeExtension(configuredShapefilePath, ".shp"));
             routerDbPath = Path.Combine(AppContext.BaseDirectory, "router_database.db");
 
             url = GetRequiredSetting(configuration, "Url");
